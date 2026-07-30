@@ -1,0 +1,122 @@
+import type { Collection, Repository, User } from "./types";
+
+const now = new Date().toISOString();
+
+export const demoUser: User = {
+  id: "demo-user",
+  githubId: "1",
+  login: "octocat",
+  name: "Mona",
+  avatarUrl: "https://github.com/octocat.png",
+  email: null,
+  lastSyncedAt: now
+};
+
+export const demoCollections: Collection[] = [
+  { id: "reading", name: "稍后阅读", color: "sky", count: 8 },
+  { id: "inspiration", name: "设计灵感", color: "plum", count: 12 },
+  { id: "workbench", name: "工作台", color: "jade", count: 6 }
+];
+
+export const demoRepositories: Repository[] = [
+  {
+    id: "next",
+    githubId: "70107786",
+    owner: "vercel",
+    name: "next.js",
+    fullName: "vercel/next.js",
+    description: "The React Framework for the Web",
+    url: "https://github.com/vercel/next.js",
+    homepage: "https://nextjs.org",
+    language: "JavaScript",
+    stars: 139742,
+    forks: 30111,
+    openIssues: 2548,
+    license: "MIT",
+    topics: ["react", "framework", "web"],
+    pushedAt: now,
+    collectionId: "workbench",
+    source: "github-star",
+    starred: true,
+    favorite: true,
+    archived: false,
+    note: "关注 App Router 与服务端组件的演进。",
+    starredAt: now,
+    updatedAt: now
+  },
+  {
+    id: "radix",
+    githubId: "262909776",
+    owner: "radix-ui",
+    name: "themes",
+    fullName: "radix-ui/themes",
+    description: "Radix Themes is an open-source component library optimized for fast development.",
+    url: "https://github.com/radix-ui/themes",
+    homepage: "https://radix-ui.com/themes",
+    language: "TypeScript",
+    stars: 8592,
+    forks: 518,
+    openIssues: 193,
+    license: "MIT",
+    topics: ["design-system", "react", "accessibility"],
+    pushedAt: now,
+    collectionId: "inspiration",
+    source: "github-star",
+    starred: true,
+    favorite: false,
+    archived: false,
+    note: null,
+    starredAt: now,
+    updatedAt: now
+  },
+  {
+    id: "fastify",
+    githubId: "57053402",
+    owner: "fastify",
+    name: "fastify",
+    fullName: "fastify/fastify",
+    description: "Fast and low overhead web framework, for Node.js",
+    url: "https://github.com/fastify/fastify",
+    homepage: "https://fastify.dev",
+    language: "JavaScript",
+    stars: 34612,
+    forks: 2531,
+    openIssues: 162,
+    license: "MIT",
+    topics: ["nodejs", "web-framework", "performance"],
+    pushedAt: now,
+    collectionId: "reading",
+    source: "bookmark",
+    starred: false,
+    favorite: false,
+    archived: false,
+    note: "后端 API 的基础框架。",
+    starredAt: null,
+    updatedAt: now
+  },
+  {
+    id: "lucide",
+    githubId: "547096675",
+    owner: "lucide-icons",
+    name: "lucide",
+    fullName: "lucide-icons/lucide",
+    description: "Beautiful & consistent icon toolkit made by the community.",
+    url: "https://github.com/lucide-icons/lucide",
+    homepage: "https://lucide.dev",
+    language: "TypeScript",
+    stars: 22437,
+    forks: 993,
+    openIssues: 262,
+    license: "ISC",
+    topics: ["icons", "svg", "design"],
+    pushedAt: now,
+    collectionId: "inspiration",
+    source: "github-star",
+    starred: true,
+    favorite: false,
+    archived: false,
+    note: null,
+    starredAt: now,
+    updatedAt: now
+  }
+];

@@ -1,14 +1,17 @@
+name: reponest
+
 services:
-  reponest:
-    image: ghcr.io/elainaicey/reponest:${REPONEST_VERSION:-latest}
+  web:
+    image: ghcr.io/elainaicey/reponest-web:${REPONEST_VERSION:-latest}
     pull_policy: always
-    container_name: reponest
+    container_name: reponest-web
     restart: unless-stopped
     init: true
     ports:
-      - "${REPONEST_PORT:-3000}:3000"
+      - "127.0.0.1:${REPONEST_WEB_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
+      HOSTNAME: 0.0.0.0
       PORT: 3000
     read_only: true
     tmpfs:
@@ -20,4 +23,62 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
+
+  api:
+    image: ghcr.io/elainaicey/reponest-api:${REPONEST_VERSION:-latest}
+    pull_policy: always
+    container_name: reponest-api
+    restart: unless-stopped
+    init: true
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${REPONEST_API_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-reponest}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-reponest}
+      PUBLIC_URL: ${PUBLIC_URL}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL}
+      GITHUB_API_VERSION: ${GITHUB_API_VERSION:-2026-03-10}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+      COOKIE_SECURE: "true"
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-60}
+      MAX_SYNC_PAGES: ${MAX_SYNC_PAGES:-50}
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  database:
+    image: postgres:17-alpine
+    container_name: reponest-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reponest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-reponest}
+    volumes:
+      - reponest-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reponest} -d ${POSTGRES_DB:-reponest}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  reponest-data:

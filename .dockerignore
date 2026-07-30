@@ -4,6 +4,8 @@
 .wrangler
 dist
 node_modules
+**/node_modules
+server/dist
 npm-debug.log*
 .dev-server*.log
 .env*

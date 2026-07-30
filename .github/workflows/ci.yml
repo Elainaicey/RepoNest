@@ -12,7 +12,7 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -22,22 +22,55 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
 
-      - name: Install dependencies
+      - name: Install web dependencies
         run: npm ci
+
+      - name: Install API dependencies
+        run: npm ci --prefix server
 
       - name: Lint
         run: npm run lint
 
-      - name: Build and test
+      - name: Test web
         run: npm test
+
+      - name: Test API
+        run: npm run test:api
 
   container:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      matrix:
+        include:
+          - name: web
+            dockerfile: Dockerfile
+          - name: api
+            dockerfile: Dockerfile.api
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Build container
-        run: docker build --tag reponest:ci .
+      - name: Build ${{ matrix.name }} container
+        run: docker build --file ${{ matrix.dockerfile }} --tag reponest-${{ matrix.name }}:ci .
+
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate Compose configuration
+        env:
+          PUBLIC_URL: https://reponest.example.com
+          GITHUB_CALLBACK_URL: https://reponest.example.com/api/auth/github/callback
+          GITHUB_CLIENT_ID: test-client
+          GITHUB_CLIENT_SECRET: test-secret
+          TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          POSTGRES_PASSWORD: test-database-password
+        run: docker compose config --quiet

@@ -1,0 +1,39 @@
+FROM node:24-alpine AS production-dependencies
+
+WORKDIR /app
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --omit=dev
+
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+COPY server/package.json server/package-lock.json ./
+RUN npm ci
+COPY server/tsconfig.json ./
+COPY server/src ./src
+COPY server/migrations ./migrations
+RUN npm run build
+
+FROM node:24-alpine AS runner
+
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=4000
+
+WORKDIR /app
+RUN addgroup --system --gid 1001 reponest \
+    && adduser --system --uid 1001 --ingroup reponest reponest
+
+COPY --from=production-dependencies --chown=reponest:reponest /app/node_modules ./node_modules
+COPY --from=builder --chown=reponest:reponest /app/dist ./dist
+COPY --from=builder --chown=reponest:reponest /app/migrations ./migrations
+COPY --from=builder --chown=reponest:reponest /app/package.json ./
+
+USER reponest
+
+EXPOSE 4000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:4000/api/health >/dev/null || exit 1
+
+CMD ["node", "dist/index.js"]
