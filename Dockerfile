@@ -1,4 +1,9 @@
-FROM node:24-alpine AS builder
+# syntax=docker/dockerfile:1
+
+# vinext emits a platform-neutral JavaScript/WASM standalone bundle. Building
+# it once on the native runner avoids executing npm install through QEMU while
+# the final stage still uses the requested target architecture.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 
 WORKDIR /app
 
