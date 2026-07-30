@@ -1,0 +1,7 @@
+services:
+  reponest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: reponest:local
+    pull_policy: build

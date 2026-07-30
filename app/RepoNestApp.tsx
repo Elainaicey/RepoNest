@@ -4,16 +4,21 @@ import {
   Archive,
   ArrowDownUp,
   ArrowUpRight,
+  Bell,
   Bookmark,
   BookmarkCheck,
-  Boxes,
+  BookOpen,
   Check,
+  CheckSquare,
   ChevronDown,
   ChevronRight,
   CircleDot,
   Cloud,
   Code2,
   Command,
+  Database,
+  Download,
+  FileJson,
   Folder,
   FolderHeart,
   GitBranch,
@@ -23,24 +28,30 @@ import {
   History,
   Home,
   LayoutList,
+  Library,
   Link2,
   Menu,
   Moon,
   MoreHorizontal,
+  Palette,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
-  Settings,
+  Settings2,
   ShieldCheck,
   Sparkles,
+  Square,
   Star,
   Sun,
   Tag,
   Trash2,
-  TrendingUp,
+  Upload,
+  WandSparkles,
   X,
 } from "lucide-react";
 import {
+  ChangeEvent,
   FormEvent,
   KeyboardEvent,
   useEffect,
@@ -51,7 +62,7 @@ import {
 
 type Source = "github" | "bookmark";
 type ViewMode = "grid" | "list";
-type ModalName = "add" | "sync" | null;
+type ModalName = "add" | "sync" | "collection" | "backup" | null;
 
 type Repository = {
   id: string;
@@ -73,15 +84,27 @@ type Repository = {
   license?: string;
 };
 
+type BackupPayload = {
+  app: "RepoNest";
+  version: "0.1.0";
+  exportedAt: string;
+  repositories: Repository[];
+  collections: string[];
+};
+
+const ALL_LANGUAGES = "全部语言";
+const UNCATEGORIZED = "未分类";
+
 const languageColors: Record<string, string> = {
-  TypeScript: "#3178c6",
-  JavaScript: "#f1e05a",
-  Python: "#3572a5",
-  Rust: "#dea584",
-  Go: "#00add8",
-  Vue: "#41b883",
-  CSS: "#663399",
-  Link: "#8a8f98",
+  TypeScript: "#7c8fe8",
+  JavaScript: "#d9b84f",
+  Python: "#5aa9d6",
+  Rust: "#c98d73",
+  Go: "#66c5d6",
+  Vue: "#67bd93",
+  CSS: "#a980d7",
+  Link: "#9b9aaa",
+  未识别: "#b0adba",
 };
 
 const initialRepositories: Repository[] = [
@@ -98,7 +121,7 @@ const initialRepositories: Repository[] = [
     languageColor: languageColors.TypeScript,
     updatedAt: "2026-07-29T09:20:00.000Z",
     topics: ["ai", "workflow", "rag"],
-    collection: "AI 工具箱",
+    collection: "AI 灵感库",
     note: "适合研究工作流编排和 RAG 产品化，关注插件体系的演进。",
     favorite: true,
     archived: false,
@@ -118,7 +141,7 @@ const initialRepositories: Repository[] = [
     languageColor: languageColors.Python,
     updatedAt: "2026-07-28T15:45:00.000Z",
     topics: ["openai", "examples", "agents"],
-    collection: "AI 工具箱",
+    collection: "AI 灵感库",
     note: "每月回看一次新增示例。",
     favorite: true,
     archived: false,
@@ -158,7 +181,7 @@ const initialRepositories: Repository[] = [
     languageColor: languageColors.TypeScript,
     updatedAt: "2026-07-27T11:30:00.000Z",
     topics: ["components", "design-system", "tailwind"],
-    collection: "设计灵感",
+    collection: "设计收藏",
     note: "参考命令面板与文档的信息架构。",
     favorite: true,
     archived: false,
@@ -178,7 +201,7 @@ const initialRepositories: Repository[] = [
     languageColor: languageColors.TypeScript,
     updatedAt: "2026-07-24T03:15:00.000Z",
     topics: ["whiteboard", "canvas", "collaboration"],
-    collection: "设计灵感",
+    collection: "设计收藏",
     note: "",
     favorite: false,
     archived: false,
@@ -225,6 +248,34 @@ const initialRepositories: Repository[] = [
     source: "github",
     license: "AGPL-3.0",
   },
+  {
+    id: "bookmark:developer-roadmaps",
+    owner: "roadmap.sh",
+    name: "Developer Roadmaps",
+    description:
+      "由社区维护的开发者学习路线与最佳实践清单，适合规划技术成长路径。",
+    url: "https://roadmap.sh",
+    stars: 0,
+    forks: 0,
+    language: "Link",
+    languageColor: languageColors.Link,
+    updatedAt: "2026-07-20T10:00:00.000Z",
+    topics: ["learning", "roadmap"],
+    collection: "稍后阅读",
+    note: "",
+    favorite: false,
+    archived: false,
+    source: "bookmark",
+  },
+];
+
+const initialCollections = [
+  "AI 灵感库",
+  "前端工程",
+  "设计收藏",
+  "开发效率",
+  "自托管",
+  "稍后阅读",
 ];
 
 const navItems = [
@@ -234,12 +285,16 @@ const navItems = [
   { id: "archived", label: "已归档", icon: Archive },
 ];
 
-const collectionMeta: Record<string, { tone: string; icon: typeof Folder }> = {
-  "AI 工具箱": { tone: "violet", icon: Sparkles },
+const collectionMeta: Record<
+  string,
+  { tone: string; icon: typeof Folder }
+> = {
+  "AI 灵感库": { tone: "violet", icon: Sparkles },
   前端工程: { tone: "blue", icon: Code2 },
-  设计灵感: { tone: "orange", icon: FolderHeart },
-  开发效率: { tone: "green", icon: Boxes },
-  自托管: { tone: "rose", icon: Cloud },
+  设计收藏: { tone: "pink", icon: Palette },
+  开发效率: { tone: "khaki", icon: BookmarkCheck },
+  自托管: { tone: "mint", icon: Cloud },
+  稍后阅读: { tone: "peach", icon: BookOpen },
 };
 
 function compactNumber(value: number) {
@@ -273,12 +328,12 @@ function mapGithubRepository(repo: Record<string, unknown>): Repository {
     stars: Number(repo.stargazers_count || 0),
     forks: Number(repo.forks_count || 0),
     language,
-    languageColor: languageColors[language] || "#8a8f98",
+    languageColor: languageColors[language] || languageColors.未识别,
     updatedAt: String(repo.updated_at || new Date().toISOString()),
     topics: Array.isArray(repo.topics)
-      ? repo.topics.slice(0, 4).map(String)
+      ? repo.topics.slice(0, 6).map(String)
       : [],
-    collection: "未分类",
+    collection: UNCATEGORIZED,
     note: "",
     favorite: false,
     archived: false,
@@ -289,38 +344,62 @@ function mapGithubRepository(repo: Record<string, unknown>): Repository {
   };
 }
 
+function isRepository(value: unknown): value is Repository {
+  if (!value || typeof value !== "object") return false;
+  const repo = value as Partial<Repository>;
+  return (
+    typeof repo.id === "string" &&
+    typeof repo.name === "string" &&
+    typeof repo.url === "string" &&
+    Array.isArray(repo.topics)
+  );
+}
+
 export default function RepoNestApp() {
   const [repositories, setRepositories] =
     useState<Repository[]>(initialRepositories);
+  const [customCollections, setCustomCollections] =
+    useState<string[]>(initialCollections);
   const [activeNav, setActiveNav] = useState("all");
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [language, setLanguage] = useState("全部语言");
+  const [language, setLanguage] = useState(ALL_LANGUAGES);
   const [sort, setSort] = useState("recent");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [selected, setSelected] = useState<Repository | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [modal, setModal] = useState<ModalName>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [mobileNav, setMobileNav] = useState(false);
   const [githubToken, setGithubToken] = useState("");
   const [addUrl, setAddUrl] = useState("");
+  const [collectionName, setCollectionName] = useState("");
+  const [tagInput, setTagInput] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const storageReady = useRef(false);
 
   useEffect(() => {
     let active = true;
     try {
-      const stored = localStorage.getItem("reponest.repositories.v1");
+      const storedRepos = localStorage.getItem("reponest.repositories.v1");
+      const storedCollections = localStorage.getItem(
+        "reponest.collections.v1",
+      );
       const storedTheme = localStorage.getItem("reponest.theme");
       const storedSync = localStorage.getItem("reponest.lastSync");
       queueMicrotask(() => {
         if (!active) return;
         storageReady.current = true;
-        if (stored) setRepositories(JSON.parse(stored));
+        if (storedRepos) setRepositories(JSON.parse(storedRepos));
+        if (storedCollections) {
+          setCustomCollections(JSON.parse(storedCollections));
+        }
         if (storedTheme === "dark" || storedTheme === "light") {
           setTheme(storedTheme);
         }
@@ -328,7 +407,6 @@ export default function RepoNestApp() {
       });
     } catch {
       storageReady.current = true;
-      // Fall back to the bundled collection when local data is unavailable.
     }
     return () => {
       active = false;
@@ -344,10 +422,16 @@ export default function RepoNestApp() {
   }, [repositories]);
 
   useEffect(() => {
+    if (!storageReady.current) return;
+    localStorage.setItem(
+      "reponest.collections.v1",
+      JSON.stringify(customCollections),
+    );
+  }, [customCollections]);
+
+  useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    if (storageReady.current) {
-      localStorage.setItem("reponest.theme", theme);
-    }
+    if (storageReady.current) localStorage.setItem("reponest.theme", theme);
   }, [theme]);
 
   useEffect(() => {
@@ -366,6 +450,7 @@ export default function RepoNestApp() {
       if (event.key === "Escape") {
         setModal(null);
         setSelected(null);
+        setConfirmReset(false);
       }
     };
     window.addEventListener("keydown", listener);
@@ -374,21 +459,25 @@ export default function RepoNestApp() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 2800);
+    const timer = window.setTimeout(() => setToast(null), 3000);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
   const collections = useMemo(() => {
+    const names = new Set(customCollections);
+    repositories.forEach((repo) => names.add(repo.collection));
     const counts = repositories.reduce<Record<string, number>>((acc, repo) => {
       acc[repo.collection] = (acc[repo.collection] || 0) + 1;
       return acc;
     }, {});
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [repositories]);
+    return Array.from(names)
+      .map((name) => [name, counts[name] || 0] as const)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [repositories, customCollections]);
 
   const languages = useMemo(
     () => [
-      "全部语言",
+      ALL_LANGUAGES,
       ...Array.from(new Set(repositories.map((repo) => repo.language))).sort(),
     ],
     [repositories],
@@ -403,7 +492,8 @@ export default function RepoNestApp() {
         if (activeNav !== "archived" && repo.archived) return false;
         if (activeCollection && repo.collection !== activeCollection)
           return false;
-        if (language !== "全部语言" && repo.language !== language) return false;
+        if (language !== ALL_LANGUAGES && repo.language !== language)
+          return false;
         if (
           query &&
           ![
@@ -437,6 +527,21 @@ export default function RepoNestApp() {
     sort,
   ]);
 
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const favoritesCount = repositories.filter((repo) => repo.favorite).length;
+  const inboxCount = repositories.filter(
+    (repo) => repo.collection === UNCATEGORIZED || !repo.note,
+  ).length;
+  const organizationScore = repositories.length
+    ? Math.round(
+        (repositories.filter(
+          (repo) => repo.collection !== UNCATEGORIZED && repo.note,
+        ).length /
+          repositories.length) *
+          100,
+      )
+    : 0;
+
   const updateRepository = (id: string, patch: Partial<Repository>) => {
     setRepositories((current) =>
       current.map((repo) => (repo.id === id ? { ...repo, ...patch } : repo)),
@@ -448,8 +553,34 @@ export default function RepoNestApp() {
 
   const removeRepository = (id: string) => {
     setRepositories((current) => current.filter((repo) => repo.id !== id));
+    setSelectedIds((current) => current.filter((item) => item !== id));
     setSelected(null);
     setToast("已从 RepoNest 中移除");
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const visibleIds = visibleRepositories.map((repo) => repo.id);
+    const allSelected =
+      visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id));
+    setSelectedIds(allSelected ? [] : visibleIds);
+  };
+
+  const bulkUpdate = (patch: Partial<Repository>, message: string) => {
+    setRepositories((current) =>
+      current.map((repo) =>
+        selectedSet.has(repo.id) ? { ...repo, ...patch } : repo,
+      ),
+    );
+    setSelectedIds([]);
+    setToast(message);
   };
 
   const syncGithub = async (event: FormEvent) => {
@@ -457,30 +588,49 @@ export default function RepoNestApp() {
     if (!githubToken.trim()) return;
     setSyncing(true);
     try {
-      const response = await fetch(
-        "https://api.github.com/user/starred?per_page=100&sort=updated",
-        {
-          headers: {
-            Accept: "application/vnd.github+json",
-            Authorization: `Bearer ${githubToken.trim()}`,
-            "X-GitHub-Api-Version": "2022-11-28",
+      const allStars: Record<string, unknown>[] = [];
+      for (let page = 1; page <= 5; page += 1) {
+        const response = await fetch(
+          `https://api.github.com/user/starred?per_page=100&sort=updated&page=${page}`,
+          {
+            headers: {
+              Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${githubToken.trim()}`,
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
           },
-        },
-      );
-      if (!response.ok) {
-        throw new Error(
-          response.status === 401
-            ? "Token 无效或已过期"
-            : `GitHub 返回 ${response.status}`,
         );
+        if (!response.ok) {
+          throw new Error(
+            response.status === 401
+              ? "Token 无效或已过期"
+              : `GitHub 返回 ${response.status}`,
+          );
+        }
+        const pageItems = (await response.json()) as Record<string, unknown>[];
+        allStars.push(...pageItems);
+        if (pageItems.length < 100) break;
       }
-      const result = (await response.json()) as Record<string, unknown>[];
       setRepositories((current) => {
         const existing = new Map(current.map((repo) => [repo.id, repo]));
-        result.forEach((raw) => {
+        allStars.forEach((raw) => {
           const imported = mapGithubRepository(raw);
           const old = existing.get(imported.id);
-          existing.set(imported.id, old ? { ...imported, ...old } : imported);
+          existing.set(
+            imported.id,
+            old
+              ? {
+                  ...imported,
+                  collection: old.collection,
+                  note: old.note,
+                  favorite: old.favorite,
+                  archived: old.archived,
+                  topics: Array.from(
+                    new Set([...old.topics, ...imported.topics]),
+                  ),
+                }
+              : imported,
+          );
         });
         return Array.from(existing.values());
       });
@@ -489,7 +639,7 @@ export default function RepoNestApp() {
       localStorage.setItem("reponest.lastSync", now);
       setGithubToken("");
       setModal(null);
-      setToast(`已同步 ${result.length} 个 GitHub 星标`);
+      setToast(`已同步 ${allStars.length} 个 GitHub 星标`);
     } catch (error) {
       setToast(error instanceof Error ? error.message : "同步失败，请稍后再试");
     } finally {
@@ -536,20 +686,24 @@ export default function RepoNestApp() {
           languageColor: languageColors.Link,
           updatedAt: new Date().toISOString(),
           topics: ["bookmark"],
-          collection: "未分类",
+          collection: UNCATEGORIZED,
           note: "",
           favorite: false,
           archived: false,
           source: "bookmark",
         };
       }
+      let duplicated = false;
       setRepositories((current) => {
-        if (current.some((item) => item.id === repo.id)) return current;
+        if (current.some((item) => item.id === repo.id)) {
+          duplicated = true;
+          return current;
+        }
         return [repo, ...current];
       });
       setAddUrl("");
       setModal(null);
-      setToast("收藏已加入你的巢穴");
+      setToast(duplicated ? "这个收藏已经在巢穴里了" : "收藏已加入你的巢穴");
     } catch (error) {
       setToast(error instanceof Error ? error.message : "链接格式不正确");
     } finally {
@@ -557,9 +711,92 @@ export default function RepoNestApp() {
     }
   };
 
+  const createCollection = (event: FormEvent) => {
+    event.preventDefault();
+    const name = collectionName.trim();
+    if (!name) return;
+    if (collections.some(([item]) => item === name)) {
+      setToast("同名集合已经存在");
+      return;
+    }
+    setCustomCollections((current) => [...current, name]);
+    setActiveCollection(name);
+    setActiveNav("all");
+    setCollectionName("");
+    setModal(null);
+    setToast(`已创建集合「${name}」`);
+  };
+
+  const addTag = () => {
+    if (!selected) return;
+    const tag = tagInput.trim().replace(/^#/, "").toLowerCase();
+    if (!tag || selected.topics.includes(tag)) {
+      setTagInput("");
+      return;
+    }
+    updateRepository(selected.id, {
+      topics: [...selected.topics, tag].slice(0, 10),
+    });
+    setTagInput("");
+  };
+
+  const exportBackup = () => {
+    const payload: BackupPayload = {
+      app: "RepoNest",
+      version: "0.1.0",
+      exportedAt: new Date().toISOString(),
+      repositories,
+      collections: customCollections,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `reponest-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setToast(`已导出 ${repositories.length} 个收藏`);
+  };
+
+  const importBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text()) as Partial<BackupPayload>;
+      if (
+        payload.app !== "RepoNest" ||
+        !Array.isArray(payload.repositories) ||
+        !payload.repositories.every(isRepository)
+      ) {
+        throw new Error("不是有效的 RepoNest 备份文件");
+      }
+      setRepositories(payload.repositories);
+      if (Array.isArray(payload.collections)) {
+        setCustomCollections(payload.collections.filter((item) => typeof item === "string"));
+      }
+      setModal(null);
+      setToast(`已恢复 ${payload.repositories.length} 个收藏`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "备份文件读取失败");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const restoreDemoData = () => {
+    setRepositories(initialRepositories);
+    setCustomCollections(initialCollections);
+    setSelectedIds([]);
+    setConfirmReset(false);
+    setModal(null);
+    setToast("已恢复 0.1.0 示例数据");
+  };
+
   const resetFilters = () => {
     setSearch("");
-    setLanguage("全部语言");
+    setLanguage(ALL_LANGUAGES);
     setActiveNav("all");
     setActiveCollection(null);
   };
@@ -577,6 +814,9 @@ export default function RepoNestApp() {
 
   return (
     <div className="app-shell">
+      <div className="ambient ambient-pink" aria-hidden="true" />
+      <div className="ambient ambient-blue" aria-hidden="true" />
+
       <aside className={`sidebar ${mobileNav ? "is-open" : ""}`}>
         <div className="brand-row">
           <button
@@ -588,7 +828,7 @@ export default function RepoNestApp() {
             aria-label="返回 RepoNest 首页"
           >
             <span className="brand-mark">
-              <BookmarkCheck size={18} strokeWidth={2.4} />
+              <BookmarkCheck size={18} strokeWidth={2.3} />
             </span>
             <span>
               Repo<span>Nest</span>
@@ -604,18 +844,20 @@ export default function RepoNestApp() {
         </div>
 
         <button className="new-button" onClick={() => setModal("add")}>
-          <Plus size={17} />
-          新建收藏
-          <span>N</span>
+          <span className="new-button-icon">
+            <Plus size={15} />
+          </span>
+          添加新收藏
+          <span className="keycap">N</span>
         </button>
 
         <nav className="primary-nav" aria-label="主导航">
-          <p className="eyebrow">浏览</p>
+          <p className="eyebrow">我的空间</p>
           {navItems.map((item) => {
             const Icon = item.icon;
             const count =
               item.id === "favorites"
-                ? repositories.filter((repo) => repo.favorite).length
+                ? favoritesCount
                 : item.id === "archived"
                   ? repositories.filter((repo) => repo.archived).length
                   : undefined;
@@ -641,14 +883,18 @@ export default function RepoNestApp() {
 
         <div className="collection-nav">
           <div className="section-label">
-            <p className="eyebrow">集合</p>
-            <button aria-label="创建集合">
+            <p className="eyebrow">我的集合</p>
+            <button
+              onClick={() => setModal("collection")}
+              aria-label="创建集合"
+            >
               <Plus size={14} />
             </button>
           </div>
-          {collections.slice(0, 5).map(([name, count]) => {
+          {collections.slice(0, 7).map(([name, count], index) => {
+            const fallbackTones = ["pink", "violet", "blue", "khaki", "mint"];
             const meta = collectionMeta[name] || {
-              tone: "neutral",
+              tone: fallbackTones[index % fallbackTones.length],
               icon: Folder,
             };
             const Icon = meta.icon;
@@ -672,26 +918,28 @@ export default function RepoNestApp() {
           })}
         </div>
 
-        <div className="sidebar-insight">
-          <div>
-            <Sparkles size={15} />
-            <span>每周回顾</span>
+        <div className="sidebar-organizer">
+          <div className="organizer-head">
+            <span>
+              <WandSparkles size={14} />
+              整理进度
+            </span>
+            <strong>{organizationScore}%</strong>
           </div>
-          <strong>还有 12 个收藏等待整理</strong>
-          <div className="insight-progress">
-            <span />
+          <div className="organizer-track">
+            <span style={{ width: `${organizationScore}%` }} />
           </div>
-          <button>开始整理 <ArrowUpRight size={13} /></button>
+          <p>{inboxCount} 个收藏还可以补充集合或笔记</p>
         </div>
 
         <div className="sidebar-footer">
-          <button onClick={() => setModal("sync")}>
-            <span className="avatar">RN</span>
+          <button onClick={() => setModal("backup")}>
+            <span className="workspace-avatar">RN</span>
             <span>
               <strong>本地工作区</strong>
-              <small>{lastSync ? `已同步 ${relativeDate(lastSync)}` : "尚未同步"}</small>
+              <small>{lastSync ? `同步于 ${relativeDate(lastSync)}` : "数据仅在本机"}</small>
             </span>
-            <Settings size={16} />
+            <Settings2 size={16} />
           </button>
         </div>
       </aside>
@@ -720,7 +968,7 @@ export default function RepoNestApp() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               onKeyDown={handleSearchKeyDown}
-              placeholder="搜索仓库、标签、笔记…"
+              placeholder="搜索仓库、标签、集合或笔记…"
               aria-label="搜索收藏"
             />
             {search ? (
@@ -735,11 +983,22 @@ export default function RepoNestApp() {
           </div>
           <div className="topbar-actions">
             <button
+              className="icon-button backup-shortcut"
+              onClick={() => setModal("backup")}
+              aria-label="备份与恢复"
+            >
+              <Database size={17} />
+            </button>
+            <button className="icon-button" aria-label="通知">
+              <Bell size={17} />
+              <span className="notification-dot" />
+            </button>
+            <button
               className="icon-button"
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
               aria-label={theme === "light" ? "切换深色模式" : "切换浅色模式"}
             >
-              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+              {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
             </button>
             <button className="sync-button" onClick={() => setModal("sync")}>
               <RefreshCw size={15} />
@@ -750,112 +1009,137 @@ export default function RepoNestApp() {
 
         <div className="content-frame">
           <section className="hero-section">
-            <div>
-              <p className="overline">
-                <span />
-                YOUR DEVELOPER LIBRARY
-              </p>
+            <div className="hero-copy-block">
+              <span className="hero-pill">
+                <Sparkles size={13} />
+                Your calm corner for great software
+              </span>
               <h1>
-                把星标变成
+                让每一颗 Star，
                 <br />
-                你的<span>技术地图。</span>
+                都有<span>温柔的归处。</span>
               </h1>
-              <p className="hero-copy">
-                不再让有价值的项目沉入 Star 列表。整理、标注，
+              <p>
+                收藏不该只是囤积。把值得记住的项目整理成
                 <br className="desktop-break" />
-                并在真正需要时重新发现它们。
+                可搜索、可回顾、真正属于你的技术花园。
               </p>
+              <div className="hero-actions">
+                <button className="hero-primary" onClick={() => setModal("sync")}>
+                  <GitBranch size={15} />
+                  同步我的星标
+                </button>
+                <button onClick={() => setModal("backup")}>
+                  <Upload size={15} />
+                  导入收藏
+                </button>
+              </div>
             </div>
-            <div className="hero-visual" aria-hidden="true">
-              <div className="orbit orbit-one" />
-              <div className="orbit orbit-two" />
-              <div className="visual-core">
-                <Bookmark size={26} fill="currentColor" />
+
+            <div className="hero-mosaic" aria-hidden="true">
+              <div className="mosaic-orbit orbit-a" />
+              <div className="mosaic-orbit orbit-b" />
+              <div className="mosaic-card card-main">
+                <span className="mosaic-icon violet">
+                  <Code2 size={17} />
+                </span>
+                <div>
+                  <small>shadcn-ui</small>
+                  <strong>ui</strong>
+                </div>
+                <Star size={14} fill="currentColor" />
               </div>
-              <div className="floating-chip chip-one">
-                <span className="lang-dot typescript" /> TypeScript
+              <div className="mosaic-card card-top">
+                <span className="mosaic-icon blue">
+                  <Cloud size={15} />
+                </span>
+                <div>
+                  <small>immich-app</small>
+                  <strong>immich</strong>
+                </div>
               </div>
-              <div className="floating-chip chip-two">
-                <Star size={13} fill="currentColor" /> 842
+              <div className="mosaic-card card-bottom">
+                <span className="mosaic-icon pink">
+                  <Sparkles size={15} />
+                </span>
+                <div>
+                  <small>langgenius</small>
+                  <strong>dify</strong>
+                </div>
               </div>
-              <div className="floating-node node-one">
-                <GitBranch size={16} />
-              </div>
-              <div className="floating-node node-two">
-                <Tag size={15} />
-              </div>
-              <div className="floating-node node-three">
-                <Folder size={15} />
-              </div>
+              <span className="mosaic-float float-star">
+                <Star size={14} fill="currentColor" />
+              </span>
+              <span className="mosaic-float float-tag">
+                <Tag size={14} />
+              </span>
+              <span className="mosaic-float float-bookmark">
+                <Bookmark size={14} fill="currentColor" />
+              </span>
             </div>
           </section>
 
           <section className="stats-grid" aria-label="收藏统计">
-            <article className="stat-card stat-primary">
-              <div className="stat-icon">
-                <BookmarkCheck size={19} />
-              </div>
-              <div>
-                <span>收藏总数</span>
-                <strong>{repositories.length}</strong>
-              </div>
-              <span className="stat-badge positive">
-                <TrendingUp size={11} /> 8.4%
+            <article className="stat-card stat-pink">
+              <span className="stat-icon">
+                <Library size={18} />
               </span>
-              <div className="mini-bars" aria-hidden="true">
-                {[38, 52, 44, 66, 58, 78, 92].map((height, index) => (
-                  <i key={index} style={{ height: `${height}%` }} />
-                ))}
-              </div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-icon violet">
-                <FolderHeart size={19} />
-              </div>
               <div>
-                <span>活跃集合</span>
+                <small>全部收藏</small>
+                <strong>{repositories.length}</strong>
+                <p>你的技术花园正在生长</p>
+              </div>
+              <span className="stat-trend">+8 本周</span>
+            </article>
+            <article className="stat-card stat-violet">
+              <span className="stat-icon">
+                <FolderHeart size={18} />
+              </span>
+              <div>
+                <small>收藏集合</small>
                 <strong>{collections.length}</strong>
+                <p>主题清晰，更容易重逢</p>
               </div>
-              <span className="stat-caption">本周 +2</span>
-              <div className="stat-orbs" aria-hidden="true">
+              <div className="mini-avatars">
                 <i />
                 <i />
                 <i />
               </div>
             </article>
-            <article className="stat-card">
-              <div className="stat-icon orange">
-                <CircleDot size={19} />
-              </div>
+            <article className="stat-card stat-blue">
+              <span className="stat-icon">
+                <Star size={18} />
+              </span>
               <div>
-                <span>待整理</span>
-                <strong>
-                  {
-                    repositories.filter(
-                      (repo) => repo.collection === "未分类",
-                    ).length
-                  }
-                </strong>
+                <small>特别关注</small>
+                <strong>{favoritesCount}</strong>
+                <p>值得持续追踪的项目</p>
               </div>
-              <span className="stat-caption">保持收件箱清爽</span>
-              <div className="ring-progress" aria-hidden="true">
-                <span>{Math.min(repositories.length * 9, 86)}%</span>
-              </div>
+              <span className="sparkline">
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+              </span>
             </article>
-            <article className="stat-card">
-              <div className="stat-icon blue">
-                <RefreshCw size={19} />
-              </div>
+            <article className="stat-card stat-khaki">
+              <span className="stat-icon">
+                <WandSparkles size={18} />
+              </span>
               <div>
-                <span>上次同步</span>
-                <strong className="stat-time">
-                  {lastSync ? relativeDate(lastSync) : "未连接"}
-                </strong>
+                <small>整理完成度</small>
+                <strong>{organizationScore}%</strong>
+                <p>{inboxCount} 个项目等待完善</p>
               </div>
-              <button className="inline-action" onClick={() => setModal("sync")}>
-                立即同步 <ChevronRight size={13} />
-              </button>
-              <ShieldCheck className="stat-watermark" size={42} />
+              <span
+                className="round-progress"
+                style={{
+                  background: `conic-gradient(#bcae7f ${organizationScore}%, rgba(255,255,255,.52) 0)`,
+                }}
+              >
+                <i />
+              </span>
             </article>
           </section>
 
@@ -863,26 +1147,46 @@ export default function RepoNestApp() {
             <div className="section-heading">
               <div>
                 <div className="breadcrumb">
-                  <span>我的巢穴</span>
+                  <span>我的收藏</span>
                   <ChevronRight size={13} />
                   <strong>{currentTitle}</strong>
                 </div>
                 <h2>{currentTitle}</h2>
                 <p>
-                  {visibleRepositories.length} 个收藏
+                  找到 {visibleRepositories.length} 个收藏
                   {search && ` · 匹配“${search}”`}
                 </p>
               </div>
-              <button className="add-button" onClick={() => setModal("add")}>
-                <Plus size={16} />
-                添加收藏
-              </button>
+              <div className="heading-actions">
+                <button
+                  className="soft-button"
+                  onClick={() => setModal("collection")}
+                >
+                  <Folder size={15} />
+                  新建集合
+                </button>
+                <button className="add-button" onClick={() => setModal("add")}>
+                  <Plus size={16} />
+                  添加收藏
+                </button>
+              </div>
             </div>
 
             <div className="filter-bar">
               <div className="filter-group">
+                <button className="select-all" onClick={toggleSelectAll}>
+                  {visibleRepositories.length > 0 &&
+                  visibleRepositories.every((repo) =>
+                    selectedSet.has(repo.id),
+                  ) ? (
+                    <CheckSquare size={15} />
+                  ) : (
+                    <Square size={15} />
+                  )}
+                  选择
+                </button>
                 <label>
-                  <span className="filter-label">语言</span>
+                  <CircleDot size={13} />
                   <select
                     value={language}
                     onChange={(event) => setLanguage(event.target.value)}
@@ -892,11 +1196,10 @@ export default function RepoNestApp() {
                       <option key={item}>{item}</option>
                     ))}
                   </select>
-                  <ChevronDown size={14} />
+                  <ChevronDown size={13} />
                 </label>
                 <label>
-                  <span className="filter-label">排序</span>
-                  <ArrowDownUp size={14} />
+                  <ArrowDownUp size={13} />
                   <select
                     value={sort}
                     onChange={(event) => setSort(event.target.value)}
@@ -906,7 +1209,7 @@ export default function RepoNestApp() {
                     <option value="stars">Star 最多</option>
                     <option value="name">名称 A–Z</option>
                   </select>
-                  <ChevronDown size={14} />
+                  <ChevronDown size={13} />
                 </label>
               </div>
               <div className="view-switcher" aria-label="视图切换">
@@ -927,14 +1230,76 @@ export default function RepoNestApp() {
               </div>
             </div>
 
+            {selectedIds.length > 0 && (
+              <div className="bulk-bar">
+                <span>
+                  <Check size={14} /> 已选择 {selectedIds.length} 项
+                </span>
+                <button
+                  onClick={() =>
+                    bulkUpdate({ favorite: true }, "已加入特别关注")
+                  }
+                >
+                  <Star size={14} /> 关注
+                </button>
+                <button
+                  onClick={() => bulkUpdate({ archived: true }, "已批量归档")}
+                >
+                  <Archive size={14} /> 归档
+                </button>
+                <label>
+                  <Folder size={14} />
+                  <select
+                    defaultValue=""
+                    onChange={(event) => {
+                      if (!event.target.value) return;
+                      bulkUpdate(
+                        { collection: event.target.value },
+                        `已移入「${event.target.value}」`,
+                      );
+                    }}
+                    aria-label="批量移动集合"
+                  >
+                    <option value="" disabled>
+                      移动到…
+                    </option>
+                    {collections.map(([name]) => (
+                      <option key={name}>{name}</option>
+                    ))}
+                  </select>
+                </label>
+                <button className="bulk-cancel" onClick={() => setSelectedIds([])}>
+                  取消
+                </button>
+              </div>
+            )}
+
             {visibleRepositories.length > 0 ? (
               <div className={`repo-grid ${viewMode}`}>
-                {visibleRepositories.map((repo) => (
+                {visibleRepositories.map((repo, index) => (
                   <article
-                    className="repo-card"
+                    className={`repo-card accent-${index % 5} ${
+                      selectedSet.has(repo.id) ? "is-selected" : ""
+                    }`}
                     key={repo.id}
                     onClick={() => setSelected(repo)}
                   >
+                    <button
+                      className="card-selector"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleSelection(repo.id);
+                      }}
+                      aria-label={
+                        selectedSet.has(repo.id) ? "取消选择" : "选择收藏"
+                      }
+                    >
+                      {selectedSet.has(repo.id) ? (
+                        <CheckSquare size={16} />
+                      ) : (
+                        <Square size={16} />
+                      )}
+                    </button>
                     <div className="repo-card-top">
                       <div className="repo-identity">
                         <span
@@ -965,7 +1330,7 @@ export default function RepoNestApp() {
                           }
                         >
                           <Star
-                            size={16}
+                            size={15}
                             fill={repo.favorite ? "currentColor" : "none"}
                           />
                         </button>
@@ -998,11 +1363,11 @@ export default function RepoNestApp() {
                         {repo.source === "github" && (
                           <>
                             <span>
-                              <Star size={13} />
+                              <Star size={12} />
                               {compactNumber(repo.stars)}
                             </span>
                             <span>
-                              <GitFork size={13} />
+                              <GitFork size={12} />
                               {compactNumber(repo.forks)}
                             </span>
                           </>
@@ -1011,7 +1376,7 @@ export default function RepoNestApp() {
                       <time>{relativeDate(repo.updatedAt)}</time>
                     </div>
                     <div className="card-collection">
-                      <Folder size={12} />
+                      <Folder size={11} />
                       {repo.collection}
                     </div>
                   </article>
@@ -1020,9 +1385,9 @@ export default function RepoNestApp() {
             ) : (
               <div className="empty-state">
                 <span>
-                  <Search size={25} />
+                  <Search size={24} />
                 </span>
-                <h3>没有找到匹配的收藏</h3>
+                <h3>暂时没有找到</h3>
                 <p>换一个关键词，或者清除当前筛选条件。</p>
                 <button onClick={resetFilters}>清除筛选</button>
               </div>
@@ -1030,13 +1395,13 @@ export default function RepoNestApp() {
           </section>
 
           <footer className="app-footer">
-            <span>RepoNest 0.1.0 · 本地优先，数据由你掌控</span>
+            <span>RepoNest 0.1.0 · Local-first, softly organized.</span>
             <a
               href="https://github.com/Elainaicey/RepoNest"
               target="_blank"
               rel="noreferrer"
             >
-              <GitBranch size={14} /> 开源项目
+              <GitBranch size={14} /> GitHub 开源
             </a>
           </footer>
         </div>
@@ -1074,7 +1439,10 @@ export default function RepoNestApp() {
           />
           <aside className="detail-drawer" aria-label="收藏详情">
             <div className="drawer-header">
-              <span className="drawer-kicker">COLLECTION DETAIL</span>
+              <span className="drawer-kicker">
+                <Sparkles size={12} />
+                COLLECTION DETAIL
+              </span>
               <button
                 className="icon-button"
                 onClick={() => setSelected(null)}
@@ -1141,14 +1509,11 @@ export default function RepoNestApp() {
                     })
                   }
                 >
-                  {Array.from(
-                    new Set([
-                      ...collections.map(([name]) => name),
-                      "未分类",
-                    ]),
-                  ).map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
+                  {[...collections.map(([name]) => name), UNCATEGORIZED]
+                    .filter((item, index, array) => array.indexOf(item) === index)
+                    .map((item) => (
+                      <option key={item}>{item}</option>
+                    ))}
                 </select>
                 <ChevronDown size={14} />
               </div>
@@ -1158,10 +1523,34 @@ export default function RepoNestApp() {
               <label>标签</label>
               <div className="drawer-tags">
                 {selected.topics.map((topic) => (
-                  <span key={topic}>#{topic}</span>
+                  <button
+                    key={topic}
+                    onClick={() =>
+                      updateRepository(selected.id, {
+                        topics: selected.topics.filter((item) => item !== topic),
+                      })
+                    }
+                    title="点击移除标签"
+                  >
+                    #{topic} <X size={11} />
+                  </button>
                 ))}
-                <button aria-label="添加标签">
-                  <Plus size={13} />
+              </div>
+              <div className="tag-editor">
+                <Tag size={14} />
+                <input
+                  value={tagInput}
+                  onChange={(event) => setTagInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addTag();
+                    }
+                  }}
+                  placeholder="输入标签，按 Enter 添加"
+                />
+                <button onClick={addTag} aria-label="添加标签">
+                  <Plus size={14} />
                 </button>
               </div>
             </div>
@@ -1220,7 +1609,10 @@ export default function RepoNestApp() {
         <div className="modal-layer" role="presentation">
           <button
             className="modal-backdrop"
-            onClick={() => setModal(null)}
+            onClick={() => {
+              setModal(null);
+              setConfirmReset(false);
+            }}
             aria-label="关闭弹窗"
           />
           <section
@@ -1230,29 +1622,43 @@ export default function RepoNestApp() {
             aria-labelledby="modal-title"
           >
             <div className="modal-head">
-              <span className={`modal-icon ${modal === "sync" ? "dark" : ""}`}>
-                {modal === "sync" ? <GitBranch size={20} /> : <Plus size={20} />}
+              <span className={`modal-icon modal-${modal}`}>
+                {modal === "sync" && <GitBranch size={20} />}
+                {modal === "add" && <Plus size={20} />}
+                {modal === "collection" && <FolderHeart size={20} />}
+                {modal === "backup" && <Database size={20} />}
               </span>
               <div>
-                <p>{modal === "sync" ? "GITHUB SYNC" : "NEW COLLECTION"}</p>
+                <p>
+                  {modal === "sync" && "GITHUB SYNC"}
+                  {modal === "add" && "NEW BOOKMARK"}
+                  {modal === "collection" && "NEW COLLECTION"}
+                  {modal === "backup" && "DATA PORTABILITY"}
+                </p>
                 <h2 id="modal-title">
-                  {modal === "sync" ? "同步你的 GitHub 星标" : "添加一个新收藏"}
+                  {modal === "sync" && "同步你的 GitHub 星标"}
+                  {modal === "add" && "添加一个新收藏"}
+                  {modal === "collection" && "创建一个新集合"}
+                  {modal === "backup" && "备份与恢复"}
                 </h2>
               </div>
               <button
                 className="icon-button"
-                onClick={() => setModal(null)}
+                onClick={() => {
+                  setModal(null);
+                  setConfirmReset(false);
+                }}
                 aria-label="关闭弹窗"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {modal === "sync" ? (
+            {modal === "sync" && (
               <form onSubmit={syncGithub}>
                 <p className="modal-copy">
-                  使用 GitHub Fine-grained Token 导入最近 100
-                  个星标。Token 只保存在内存中，刷新页面后即清除。
+                  使用 GitHub Fine-grained Token 分页导入最多 500 个星标。
+                  Token 只存在于当前页面内存，刷新后即清除。
                 </p>
                 <label className="input-label" htmlFor="github-token">
                   Personal access token
@@ -1271,7 +1677,7 @@ export default function RepoNestApp() {
                 </div>
                 <div className="permission-note">
                   <Check size={15} />
-                  仅需公开仓库读取权限，不会修改你的 GitHub 数据
+                  只读取星标与公开仓库信息，不会修改 GitHub 数据
                 </div>
                 <div className="modal-actions">
                   <button type="button" onClick={() => setModal(null)}>
@@ -1290,10 +1696,13 @@ export default function RepoNestApp() {
                   </button>
                 </div>
               </form>
-            ) : (
+            )}
+
+            {modal === "add" && (
               <form onSubmit={addRepository}>
                 <p className="modal-copy">
-                  粘贴 GitHub 仓库或任意网页链接。我们会自动读取公开信息并归入未分类。
+                  粘贴 GitHub 仓库或任意网页链接。公开信息会被自动读取，
+                  新收藏默认放入「未分类」。
                 </p>
                 <label className="input-label" htmlFor="collection-url">
                   收藏链接
@@ -1332,6 +1741,107 @@ export default function RepoNestApp() {
                   </button>
                 </div>
               </form>
+            )}
+
+            {modal === "collection" && (
+              <form onSubmit={createCollection}>
+                <p className="modal-copy">
+                  用一个简短、容易记住的主题来组织收藏。空集合也会保留，
+                  方便你稍后批量整理。
+                </p>
+                <label className="input-label" htmlFor="collection-name">
+                  集合名称
+                </label>
+                <div className="large-input">
+                  <Folder size={17} />
+                  <input
+                    id="collection-name"
+                    value={collectionName}
+                    onChange={(event) => setCollectionName(event.target.value)}
+                    placeholder="例如：周末想试试"
+                    maxLength={24}
+                    autoFocus
+                  />
+                </div>
+                <div className="palette-row" aria-label="集合配色预览">
+                  <span className="pink" />
+                  <span className="violet" />
+                  <span className="blue" />
+                  <span className="khaki" />
+                  <span className="mint" />
+                  <small>系统会自动分配柔和配色</small>
+                </div>
+                <div className="modal-actions">
+                  <button type="button" onClick={() => setModal(null)}>
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary"
+                    disabled={!collectionName.trim()}
+                  >
+                    <FolderHeart size={15} />
+                    创建集合
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {modal === "backup" && (
+              <div className="backup-panel">
+                <p className="modal-copy">
+                  将收藏、集合、标签与笔记导出为一个 JSON 文件，
+                  可在另一台设备或另一个浏览器中恢复。
+                </p>
+                <div className="backup-options">
+                  <button onClick={exportBackup}>
+                    <span className="backup-option-icon violet">
+                      <Download size={18} />
+                    </span>
+                    <span>
+                      <strong>导出完整备份</strong>
+                      <small>{repositories.length} 个收藏 · JSON 格式</small>
+                    </span>
+                    <ChevronRight size={16} />
+                  </button>
+                  <button onClick={() => importRef.current?.click()}>
+                    <span className="backup-option-icon blue">
+                      <Upload size={18} />
+                    </span>
+                    <span>
+                      <strong>从备份恢复</strong>
+                      <small>会替换当前浏览器中的数据</small>
+                    </span>
+                    <ChevronRight size={16} />
+                  </button>
+                  <input
+                    ref={importRef}
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={importBackup}
+                    hidden
+                  />
+                </div>
+                <div className="backup-format">
+                  <FileJson size={14} />
+                  备份文件不包含 GitHub Token 或其他凭据
+                </div>
+                <div className="reset-zone">
+                  {!confirmReset ? (
+                    <button onClick={() => setConfirmReset(true)}>
+                      <RotateCcw size={14} /> 恢复示例数据
+                    </button>
+                  ) : (
+                    <div>
+                      <span>这会覆盖当前收藏，确认继续？</span>
+                      <button onClick={() => setConfirmReset(false)}>取消</button>
+                      <button className="danger" onClick={restoreDemoData}>
+                        确认恢复
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </section>
         </div>

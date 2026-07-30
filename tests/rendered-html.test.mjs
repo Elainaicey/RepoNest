@@ -32,9 +32,10 @@ test("server-renders the RepoNest 0.1.0 product shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>RepoNest/);
-  assert.match(html, /把星标变成/);
-  assert.match(html, /YOUR DEVELOPER LIBRARY/);
+  assert.match(html, /让每一颗 Star/);
+  assert.match(html, /Your calm corner for great software/);
   assert.match(html, /同步 GitHub/);
+  assert.match(html, /备份与恢复/);
   assert.match(html, /0\.1\.0/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });

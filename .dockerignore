@@ -8,3 +8,4 @@ npm-debug.log*
 .dev-server*.log
 .env*
 coverage
+docker-compose*.yml
