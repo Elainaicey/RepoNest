@@ -35,6 +35,7 @@ API 需要 PostgreSQL 和 `.env` 中的 GitHub App 配置。完整变量见 `.en
 
 ```bash
 npm run lint
+npm run typecheck
 npm test
 npm run test:api
 ```

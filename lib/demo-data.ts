@@ -1,4 +1,4 @@
-import type { Collection, Repository, User } from "./types";
+import type { Collection, Repository, Tag, User } from "./types";
 
 const now = new Date().toISOString();
 
@@ -13,9 +13,16 @@ export const demoUser: User = {
 };
 
 export const demoCollections: Collection[] = [
-  { id: "reading", name: "稍后阅读", color: "sky", count: 8 },
-  { id: "inspiration", name: "设计灵感", color: "plum", count: 12 },
-  { id: "workbench", name: "工作台", color: "jade", count: 6 }
+  { id: "reading", name: "稍后阅读", color: "sky", count: 8, description: "待深入阅读与评估", icon: "book", pinned: true, sortOrder: 0 },
+  { id: "inspiration", name: "设计灵感", color: "plum", count: 12, description: "产品与视觉参考", icon: "sparkles", pinned: true, sortOrder: 1 },
+  { id: "workbench", name: "工作台", color: "jade", count: 6, description: "当前项目依赖与工具", icon: "code", pinned: false, sortOrder: 2 }
+];
+
+export const demoTags: Tag[] = [
+  { id: "frontend", name: "前端", color: "iris", count: 2, description: "Web 与客户端技术" },
+  { id: "design-system", name: "设计系统", color: "plum", count: 2, description: "组件、令牌与交互模式" },
+  { id: "backend", name: "后端", color: "sky", count: 1, description: "服务端框架与基础设施" },
+  { id: "production", name: "生产使用", color: "jade", count: 1, description: "已进入实际项目的依赖" }
 ];
 
 export const demoRepositories: Repository[] = [
@@ -36,12 +43,20 @@ export const demoRepositories: Repository[] = [
     topics: ["react", "framework", "web"],
     pushedAt: now,
     collectionId: "workbench",
+    collectionName: "工作台",
     source: "github-star",
     starred: true,
     favorite: true,
     archived: false,
     note: "关注 App Router 与服务端组件的演进。",
+    rating: 5,
+    readStatus: "adopted",
+    tags: [
+      { id: "frontend", name: "前端", color: "iris" },
+      { id: "production", name: "生产使用", color: "jade" }
+    ],
     starredAt: now,
+    lastOpenedAt: now,
     updatedAt: now
   },
   {
@@ -61,12 +76,20 @@ export const demoRepositories: Repository[] = [
     topics: ["design-system", "react", "accessibility"],
     pushedAt: now,
     collectionId: "inspiration",
+    collectionName: "设计灵感",
     source: "github-star",
     starred: true,
     favorite: false,
     archived: false,
     note: null,
+    rating: 4,
+    readStatus: "exploring",
+    tags: [
+      { id: "design-system", name: "设计系统", color: "plum" },
+      { id: "frontend", name: "前端", color: "iris" }
+    ],
     starredAt: now,
+    lastOpenedAt: null,
     updatedAt: now
   },
   {
@@ -86,12 +109,17 @@ export const demoRepositories: Repository[] = [
     topics: ["nodejs", "web-framework", "performance"],
     pushedAt: now,
     collectionId: "reading",
+    collectionName: "稍后阅读",
     source: "bookmark",
     starred: false,
     favorite: false,
     archived: false,
     note: "后端 API 的基础框架。",
+    rating: 4,
+    readStatus: "inbox",
+    tags: [{ id: "backend", name: "后端", color: "sky" }],
     starredAt: null,
+    lastOpenedAt: null,
     updatedAt: now
   },
   {
@@ -111,12 +139,17 @@ export const demoRepositories: Repository[] = [
     topics: ["icons", "svg", "design"],
     pushedAt: now,
     collectionId: "inspiration",
+    collectionName: "设计灵感",
     source: "github-star",
     starred: true,
     favorite: false,
     archived: false,
     note: null,
+    rating: 3,
+    readStatus: "exploring",
+    tags: [{ id: "design-system", name: "设计系统", color: "plum" }],
     starredAt: now,
+    lastOpenedAt: null,
     updatedAt: now
   }
 ];

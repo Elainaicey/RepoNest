@@ -1,18 +1,22 @@
 import {
   ArrowRight,
+  BarChart3,
   Boxes,
   GitBranch as Github,
   RefreshCw,
   Search,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Tags
 } from "lucide-react";
 import Link from "next/link";
 import { Brand } from "@/components/brand";
+import { AmbientHero } from "@/components/ambient-hero";
 
 export default function Home() {
   return (
     <main className="landing">
+      <AmbientHero />
       <header className="landing-header">
         <Brand />
         <nav>
@@ -34,7 +38,7 @@ export default function Home() {
         <div className="hero-copy">
           <div className="release-pill">
             <Sparkles size={14} />
-            RepoNest 0.1.0 · 全新的资料库架构
+            RepoNest 0.1.0 · 综合性 GitHub 收藏空间
           </div>
           <h1>
             让每一颗 Star，
@@ -42,7 +46,7 @@ export default function Home() {
             都有安静的归处。
           </h1>
           <p>
-            自动同步 GitHub 星标，补上收藏集、特别关注、笔记和归档。数据留在自己的服务器里，真正成为可整理、可搜索的技术资料库。
+            自动同步 GitHub 星标，用收藏集、标签、处理状态、评分和笔记建立自己的知识结构。数据留在自己的服务器里，也能随时完整导出。
           </p>
           <div className="hero-actions">
             <Link className="button primary large" href="/login">
@@ -55,12 +59,9 @@ export default function Home() {
             </Link>
           </div>
           <div className="hero-assurances">
-            <span>
-              <ShieldCheck size={15} /> 自托管与加密令牌
-            </span>
-            <span>
-              <Github size={15} /> GitHub App 最小权限
-            </span>
+            <span><ShieldCheck size={15} /> 自托管与加密令牌</span>
+            <span><Github size={15} /> GitHub App 最小权限</span>
+            <span><Tags size={15} /> 分组与多标签组织</span>
           </div>
         </div>
 
@@ -75,6 +76,7 @@ export default function Home() {
             <div className="preview-kicker" />
             <div className="preview-title" />
             <div className="preview-subtitle" />
+            <div className="preview-command"><Search size={12} /><i /><kbd>⌘ K</kbd></div>
             <div className="preview-stats">
               {["iris", "sky", "ruby", "jade"].map((color) => (
                 <div key={color}>
@@ -91,8 +93,8 @@ export default function Home() {
                     <span />
                     <i />
                   </div>
-                  <p />
-                  <p />
+                  <p /><p />
+                  <div className="preview-tags"><i /><i /></div>
                   <footer />
                 </article>
               ))}
@@ -104,7 +106,7 @@ export default function Home() {
       <section className="feature-section" id="features">
         <div className="feature-intro">
           <p className="eyebrow">BUILT FOR LONG-TERM USE</p>
-          <h2>不是星标列表，而是一套正式的收藏工作流。</h2>
+          <h2>不止是星标列表，而是一套完整的收藏工作流。</h2>
           <p>
             清晰的前后端边界、可迁移的数据和克制的界面，让 RepoNest 适合长期部署，也适合社区继续扩展。
           </p>
@@ -121,8 +123,8 @@ export default function Home() {
             <span className="feature-icon sky">
               <Search size={20} />
             </span>
-            <h3>真正可查找</h3>
-            <p>按名称、简介和主题快速过滤，让旧收藏重新回到视野。</p>
+            <h3>组合检索</h3>
+            <p>搜索名称、简介、笔记和标签，再按语言、状态、标签与热度组合筛选。</p>
           </article>
           <article>
             <span className="feature-icon jade">
@@ -130,6 +132,21 @@ export default function Home() {
             </span>
             <h3>自己的数据</h3>
             <p>PostgreSQL 持久化、JSON 导出与 Docker Compose 部署，不绑定第三方平台。</p>
+          </article>
+          <article>
+            <span className="feature-icon plum"><Tags size={20} /></span>
+            <h3>分组与标签</h3>
+            <p>收藏集承接纵向项目，标签连接横向主题；批量整理也无需逐项打开。</p>
+          </article>
+          <article>
+            <span className="feature-icon amber"><Sparkles size={20} /></span>
+            <h3>处理工作流</h3>
+            <p>用待整理、探索中和已采用记录下一步，评分与笔记保留个人判断。</p>
+          </article>
+          <article>
+            <span className="feature-icon pink"><BarChart3 size={20} /></span>
+            <h3>收藏洞察</h3>
+            <p>观察语言、标签和处理状态分布，让资料库保持健康而不是持续堆积。</p>
           </article>
         </div>
       </section>

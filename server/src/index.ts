@@ -51,6 +51,41 @@ type SessionUser = {
   last_synced_at: Date | null;
 };
 
+const colorSchema = z.enum([
+  "gray",
+  "mauve",
+  "slate",
+  "sage",
+  "olive",
+  "sand",
+  "tomato",
+  "red",
+  "ruby",
+  "crimson",
+  "pink",
+  "plum",
+  "purple",
+  "violet",
+  "iris",
+  "indigo",
+  "blue",
+  "cyan",
+  "sky",
+  "mint",
+  "teal",
+  "jade",
+  "green",
+  "grass",
+  "lime",
+  "yellow",
+  "amber",
+  "orange",
+  "brown",
+  "bronze",
+  "gold"
+]);
+const readStatusSchema = z.enum(["inbox", "exploring", "adopted"]);
+
 async function currentUser(request: FastifyRequest) {
   const token = request.cookies[sessionCookie];
   if (!token) return null;
@@ -188,13 +223,23 @@ app.get("/api/auth/github/callback", async (request, reply) => {
     const resolvedUserId = result.rows[0]!.id;
 
     await pool.query(
-      `INSERT INTO collections (id, user_id, name, color)
+      `INSERT INTO collections (id, user_id, name, color, description, icon, pinned)
        VALUES
-         ($1, $4, '稍后阅读', 'sky'),
-         ($2, $4, '灵感', 'iris'),
-         ($3, $4, '工作台', 'jade')
+         ($1, $4, '稍后阅读', 'sky', '等待深入阅读与评估的项目', 'book', true),
+         ($2, $4, '灵感', 'plum', '产品、设计与实现灵感', 'sparkles', true),
+         ($3, $4, '工作台', 'jade', '已经进入当前工作流的工具', 'code', false)
        ON CONFLICT (user_id, name) DO NOTHING`,
       [randomUUID(), randomUUID(), randomUUID(), resolvedUserId]
+    );
+    await pool.query(
+      `INSERT INTO tags (id, user_id, name, color, description)
+       VALUES
+         ($1, $5, '前端', 'iris', 'Web 与客户端技术'),
+         ($2, $5, '后端', 'sky', '服务端框架与基础设施'),
+         ($3, $5, '设计系统', 'plum', '组件、令牌与交互模式'),
+         ($4, $5, '生产使用', 'jade', '已经进入实际项目的依赖')
+       ON CONFLICT DO NOTHING`,
+      [randomUUID(), randomUUID(), randomUUID(), randomUUID(), resolvedUserId]
     );
 
     const session = randomToken();
@@ -254,7 +299,13 @@ app.get("/api/repositories", async (request, reply) => {
         .enum(["all", "stars", "bookmarks", "favorites", "archived"])
         .default("all"),
       collection: z.string().uuid().optional(),
-      search: z.string().max(120).optional()
+      tag: z.string().uuid().optional(),
+      language: z.string().max(80).optional(),
+      status: readStatusSchema.optional(),
+      search: z.string().trim().max(120).optional(),
+      sort: z
+        .enum(["saved", "updated", "stars", "name", "rating"])
+        .default("saved")
     })
     .parse(request.query);
 
@@ -265,55 +316,114 @@ app.get("/api/repositories", async (request, reply) => {
   ];
   const values: unknown[] = [user.id];
   if (query.scope === "stars") conditions.push("ur.starred = true", "ur.archived = false");
-  if (query.scope === "bookmarks") {
-    conditions.push("ur.source = 'bookmark'", "ur.archived = false");
-  }
-  if (query.scope === "favorites") {
-    conditions.push("ur.favorite = true", "ur.archived = false");
-  }
+  if (query.scope === "bookmarks") conditions.push("ur.source = 'bookmark'", "ur.archived = false");
+  if (query.scope === "favorites") conditions.push("ur.favorite = true", "ur.archived = false");
   if (query.scope === "archived") conditions.push("ur.archived = true");
   if (query.scope === "all") conditions.push("ur.archived = false");
   if (query.collection) {
     values.push(query.collection);
     conditions.push(`ur.collection_id = $${values.length}`);
   }
+  if (query.tag) {
+    values.push(query.tag);
+    conditions.push(`EXISTS (
+      SELECT 1 FROM repository_tags filtered_tag
+       WHERE filtered_tag.user_id = ur.user_id
+         AND filtered_tag.repository_id = ur.repository_id
+         AND filtered_tag.tag_id = $${values.length}
+    )`);
+  }
+  if (query.language) {
+    values.push(query.language);
+    conditions.push(`r.language = $${values.length}`);
+  }
+  if (query.status) {
+    values.push(query.status);
+    conditions.push(`ur.read_status = $${values.length}`);
+  }
   if (query.search) {
     values.push(`%${query.search}%`);
-    conditions.push(
-      `(r.full_name ILIKE $${values.length} OR r.description ILIKE $${values.length})`
-    );
+    conditions.push(`(
+      r.full_name ILIKE $${values.length}
+      OR r.description ILIKE $${values.length}
+      OR ur.note ILIKE $${values.length}
+      OR EXISTS (
+        SELECT 1 FROM repository_tags searchable_tag
+        JOIN tags searchable_tag_data ON searchable_tag_data.id = searchable_tag.tag_id
+        WHERE searchable_tag.user_id = ur.user_id
+          AND searchable_tag.repository_id = ur.repository_id
+          AND searchable_tag_data.name ILIKE $${values.length}
+      )
+    )`);
   }
 
+  const orderBy = {
+    saved: "COALESCE(ur.starred_at, ur.created_at) DESC",
+    updated: "COALESCE(r.pushed_at, r.updated_at) DESC",
+    stars: "r.stars DESC",
+    name: "r.full_name ASC",
+    rating: "ur.rating DESC, COALESCE(ur.starred_at, ur.created_at) DESC"
+  }[query.sort];
   const result = await pool.query(
     `SELECT r.id, r.github_id AS "githubId", r.owner, r.name,
             r.full_name AS "fullName", r.description, r.url, r.homepage,
             r.language, r.stars, r.forks, r.open_issues AS "openIssues",
             r.license, r.topics, r.pushed_at AS "pushedAt",
-            ur.collection_id AS "collectionId", ur.source, ur.starred,
-            ur.favorite, ur.archived, ur.note,
-            ur.starred_at AS "starredAt", ur.updated_at AS "updatedAt"
+            ur.collection_id AS "collectionId", c.name AS "collectionName",
+            ur.source, ur.starred, ur.favorite, ur.archived, ur.note,
+            ur.rating, ur.read_status AS "readStatus",
+            ur.starred_at AS "starredAt", ur.last_opened_at AS "lastOpenedAt",
+            ur.updated_at AS "updatedAt",
+            COALESCE(tag_data.tags, '[]'::json) AS tags
        FROM user_repositories ur
        JOIN repositories r ON r.id = ur.repository_id
+       LEFT JOIN collections c ON c.id = ur.collection_id
+       LEFT JOIN LATERAL (
+         SELECT json_agg(
+           json_build_object('id', t.id, 'name', t.name, 'color', t.color)
+           ORDER BY t.name
+         ) AS tags
+           FROM repository_tags rt
+           JOIN tags t ON t.id = rt.tag_id
+          WHERE rt.user_id = ur.user_id
+            AND rt.repository_id = ur.repository_id
+       ) tag_data ON true
       WHERE ${conditions.join(" AND ")}
-      ORDER BY COALESCE(ur.starred_at, ur.updated_at) DESC
+      ORDER BY ${orderBy}
       LIMIT 1000`,
     values
   );
   return { repositories: result.rows };
 });
 
+const repositoryChangesSchema = z.object({
+  favorite: z.boolean().optional(),
+  archived: z.boolean().optional(),
+  note: z.string().trim().max(4000).nullable().optional(),
+  collectionId: z.string().uuid().nullable().optional(),
+  rating: z.number().int().min(0).max(5).optional(),
+  readStatus: readStatusSchema.optional(),
+  tagIds: z.array(z.string().uuid()).max(30).optional(),
+  opened: z.boolean().optional()
+});
+
+async function validateCollection(userId: string, collectionId: string | null | undefined) {
+  if (!collectionId) return true;
+  const result = await pool.query(
+    "SELECT 1 FROM collections WHERE id = $1 AND user_id = $2",
+    [collectionId, userId]
+  );
+  return Boolean(result.rowCount);
+}
+
 app.patch("/api/repositories/:id", async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
-  const body = z
-    .object({
-      favorite: z.boolean().optional(),
-      archived: z.boolean().optional(),
-      note: z.string().max(4000).nullable().optional(),
-      collectionId: z.string().uuid().nullable().optional()
-    })
-    .parse(request.body);
+  const body = repositoryChangesSchema.parse(request.body);
+  if (!(await validateCollection(user.id, body.collectionId))) {
+    return reply.code(400).send({ error: "invalid_collection" });
+  }
 
   const fields: string[] = [];
   const values: unknown[] = [user.id, params.id];
@@ -321,26 +431,128 @@ app.patch("/api/repositories/:id", async (request, reply) => {
     favorite: "favorite",
     archived: "archived",
     note: "note",
-    collectionId: "collection_id"
+    collectionId: "collection_id",
+    rating: "rating",
+    readStatus: "read_status"
   } as const;
   for (const [key, column] of Object.entries(mapping)) {
-    const typedKey = key as keyof typeof mapping;
-    if (body[typedKey] !== undefined) {
-      values.push(body[typedKey]);
+    const value = body[key as keyof typeof mapping];
+    if (value !== undefined) {
+      values.push(value);
       fields.push(`${column} = $${values.length}`);
     }
   }
-  if (!fields.length) return reply.code(400).send({ error: "no_changes" });
+  if (body.opened) fields.push("last_opened_at = now()");
+  if (!fields.length && body.tagIds === undefined) {
+    return reply.code(400).send({ error: "no_changes" });
+  }
 
-  const result = await pool.query(
-    `UPDATE user_repositories
-        SET ${fields.join(", ")}, updated_at = now()
-      WHERE user_id = $1 AND repository_id = $2
-      RETURNING repository_id`,
-    values
-  );
-  if (!result.rowCount) return reply.code(404).send({ error: "not_found" });
-  return { updated: true };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    if (fields.length) {
+      const result = await client.query(
+        `UPDATE user_repositories
+            SET ${fields.join(", ")}, updated_at = now()
+          WHERE user_id = $1 AND repository_id = $2
+          RETURNING repository_id`,
+        values
+      );
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return reply.code(404).send({ error: "not_found" });
+      }
+    }
+    if (body.tagIds !== undefined) {
+      await client.query(
+        "DELETE FROM repository_tags WHERE user_id = $1 AND repository_id = $2",
+        [user.id, params.id]
+      );
+      if (body.tagIds.length) {
+        await client.query(
+          `INSERT INTO repository_tags (user_id, repository_id, tag_id)
+           SELECT $1, $2, id FROM tags
+            WHERE user_id = $1 AND id = ANY($3::uuid[])`,
+          [user.id, params.id, body.tagIds]
+        );
+      }
+    }
+    await client.query("COMMIT");
+    return { updated: true };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/api/repositories/bulk", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = z
+    .object({
+      ids: z.array(z.string().uuid()).min(1).max(200),
+      changes: repositoryChangesSchema.omit({ opened: true })
+    })
+    .parse(request.body);
+  if (!(await validateCollection(user.id, body.changes.collectionId))) {
+    return reply.code(400).send({ error: "invalid_collection" });
+  }
+  const fields: string[] = [];
+  const values: unknown[] = [user.id, body.ids];
+  const mapping = {
+    favorite: "favorite",
+    archived: "archived",
+    note: "note",
+    collectionId: "collection_id",
+    rating: "rating",
+    readStatus: "read_status"
+  } as const;
+  for (const [key, column] of Object.entries(mapping)) {
+    const value = body.changes[key as keyof typeof mapping];
+    if (value !== undefined) {
+      values.push(value);
+      fields.push(`${column} = $${values.length}`);
+    }
+  }
+  if (!fields.length && body.changes.tagIds === undefined) {
+    return reply.code(400).send({ error: "no_changes" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    if (fields.length) {
+      await client.query(
+        `UPDATE user_repositories SET ${fields.join(", ")}, updated_at = now()
+          WHERE user_id = $1 AND repository_id = ANY($2::uuid[])`,
+        values
+      );
+    }
+    if (body.changes.tagIds !== undefined) {
+      await client.query(
+        "DELETE FROM repository_tags WHERE user_id = $1 AND repository_id = ANY($2::uuid[])",
+        [user.id, body.ids]
+      );
+      if (body.changes.tagIds.length) {
+        await client.query(
+          `INSERT INTO repository_tags (user_id, repository_id, tag_id)
+           SELECT $1, repository_id, tag_id
+             FROM unnest($2::uuid[]) AS repository_id
+             CROSS JOIN unnest($3::uuid[]) AS tag_id
+            WHERE EXISTS (SELECT 1 FROM tags WHERE id = tag_id AND user_id = $1)`,
+          [user.id, body.ids, body.changes.tagIds]
+        );
+      }
+    }
+    await client.query("COMMIT");
+    return { updated: body.ids.length };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 app.delete("/api/repositories/:id", async (request, reply) => {
@@ -365,6 +577,9 @@ app.post("/api/bookmarks", async (request, reply) => {
       collectionId: z.string().uuid().nullable().optional()
     })
     .parse(request.body);
+  if (!(await validateCollection(user.id, body.collectionId))) {
+    return reply.code(400).send({ error: "invalid_collection" });
+  }
   const match = body.repository
     .trim()
     .replace(/^https?:\/\/github\.com\//, "")
@@ -387,13 +602,14 @@ app.get("/api/collections", async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
   const result = await pool.query(
-    `SELECT c.id, c.name, c.color, COUNT(ur.repository_id)::int AS count
+    `SELECT c.id, c.name, c.color, c.description, c.icon, c.pinned,
+            c.sort_order AS "sortOrder", COUNT(ur.repository_id)::int AS count
        FROM collections c
        LEFT JOIN user_repositories ur
          ON ur.collection_id = c.id AND ur.hidden = false
       WHERE c.user_id = $1
       GROUP BY c.id
-      ORDER BY c.created_at ASC`,
+      ORDER BY c.pinned DESC, c.sort_order ASC, c.created_at ASC`,
     [user.id]
   );
   return { collections: result.rows };
@@ -405,18 +621,49 @@ app.post("/api/collections", async (request, reply) => {
   const body = z
     .object({
       name: z.string().trim().min(1).max(60),
-      color: z
-        .enum(["iris", "sky", "jade", "amber", "ruby", "plum", "sand"])
-        .default("iris")
+      color: colorSchema.default("iris"),
+      description: z.string().trim().max(240).nullable().optional(),
+      icon: z.enum(["folder", "code", "book", "sparkles", "briefcase", "rocket"]).default("folder")
     })
     .parse(request.body);
   const result = await pool.query(
-    `INSERT INTO collections (id, user_id, name, color)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, name, color`,
-    [randomUUID(), user.id, body.name, body.color]
+    `INSERT INTO collections (id, user_id, name, color, description, icon)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, name, color, description, icon, pinned, sort_order AS "sortOrder"`,
+    [randomUUID(), user.id, body.name, body.color, body.description ?? null, body.icon]
   );
   return reply.code(201).send(result.rows[0]);
+});
+
+app.patch("/api/collections/:id", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    name: z.string().trim().min(1).max(60).optional(),
+    color: colorSchema.optional(),
+    description: z.string().trim().max(240).nullable().optional(),
+    icon: z.enum(["folder", "code", "book", "sparkles", "briefcase", "rocket"]).optional(),
+    pinned: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).max(1000).optional()
+  }).parse(request.body);
+  const fields: string[] = [];
+  const values: unknown[] = [params.id, user.id];
+  const mapping = { name: "name", color: "color", description: "description", icon: "icon", pinned: "pinned", sortOrder: "sort_order" } as const;
+  for (const [key, column] of Object.entries(mapping)) {
+    const value = body[key as keyof typeof mapping];
+    if (value !== undefined) {
+      values.push(value);
+      fields.push(`${column} = $${values.length}`);
+    }
+  }
+  if (!fields.length) return reply.code(400).send({ error: "no_changes" });
+  const result = await pool.query(
+    `UPDATE collections SET ${fields.join(", ")}, updated_at = now()
+      WHERE id = $1 AND user_id = $2 RETURNING id`, values
+  );
+  if (!result.rowCount) return reply.code(404).send({ error: "not_found" });
+  return { updated: true };
 });
 
 app.delete("/api/collections/:id", async (request, reply) => {
@@ -430,6 +677,107 @@ app.delete("/api/collections/:id", async (request, reply) => {
   return reply.code(204).send();
 });
 
+app.get("/api/tags", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const result = await pool.query(
+    `SELECT t.id, t.name, t.color, t.description,
+            COUNT(rt.repository_id)::int AS count
+       FROM tags t
+       LEFT JOIN repository_tags rt ON rt.tag_id = t.id AND rt.user_id = t.user_id
+      WHERE t.user_id = $1
+      GROUP BY t.id
+      ORDER BY COUNT(rt.repository_id) DESC, t.name ASC`,
+    [user.id]
+  );
+  return { tags: result.rows };
+});
+
+app.post("/api/tags", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = z.object({
+    name: z.string().trim().min(1).max(40),
+    color: colorSchema.default("iris"),
+    description: z.string().trim().max(160).nullable().optional()
+  }).parse(request.body);
+  const result = await pool.query(
+    `INSERT INTO tags (id, user_id, name, color, description)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, name, color, description`,
+    [randomUUID(), user.id, body.name, body.color, body.description ?? null]
+  );
+  return reply.code(201).send({ ...result.rows[0], count: 0 });
+});
+
+app.patch("/api/tags/:id", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    name: z.string().trim().min(1).max(40).optional(),
+    color: colorSchema.optional(),
+    description: z.string().trim().max(160).nullable().optional()
+  }).parse(request.body);
+  const fields: string[] = [];
+  const values: unknown[] = [params.id, user.id];
+  for (const [key, column] of Object.entries({ name: "name", color: "color", description: "description" })) {
+    const value = body[key as keyof typeof body];
+    if (value !== undefined) {
+      values.push(value);
+      fields.push(`${column} = $${values.length}`);
+    }
+  }
+  if (!fields.length) return reply.code(400).send({ error: "no_changes" });
+  const result = await pool.query(
+    `UPDATE tags SET ${fields.join(", ")}, updated_at = now()
+      WHERE id = $1 AND user_id = $2 RETURNING id`, values
+  );
+  if (!result.rowCount) return reply.code(404).send({ error: "not_found" });
+  return { updated: true };
+});
+
+app.delete("/api/tags/:id", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  await pool.query("DELETE FROM tags WHERE id = $1 AND user_id = $2", [params.id, user.id]);
+  return reply.code(204).send();
+});
+
+app.get("/api/insights", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const [summary, languages, statuses, tags] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*) FILTER (WHERE hidden = false AND archived = false)::int AS total,
+              COUNT(*) FILTER (WHERE starred = true AND hidden = false)::int AS stars,
+              COUNT(*) FILTER (WHERE favorite = true AND hidden = false)::int AS favorites,
+              COUNT(*) FILTER (WHERE note IS NOT NULL AND note <> '' AND hidden = false)::int AS notes,
+              COUNT(*) FILTER (WHERE read_status = 'inbox' AND hidden = false AND archived = false)::int AS inbox
+         FROM user_repositories WHERE user_id = $1`, [user.id]
+    ),
+    pool.query(
+      `SELECT COALESCE(r.language, 'Other') AS name, COUNT(*)::int AS count
+         FROM user_repositories ur JOIN repositories r ON r.id = ur.repository_id
+        WHERE ur.user_id = $1 AND ur.hidden = false AND ur.archived = false
+        GROUP BY r.language ORDER BY count DESC LIMIT 8`, [user.id]
+    ),
+    pool.query(
+      `SELECT read_status AS name, COUNT(*)::int AS count
+         FROM user_repositories
+        WHERE user_id = $1 AND hidden = false AND archived = false
+        GROUP BY read_status ORDER BY count DESC`, [user.id]
+    ),
+    pool.query(
+      `SELECT t.name, t.color, COUNT(rt.repository_id)::int AS count
+         FROM tags t LEFT JOIN repository_tags rt ON rt.tag_id = t.id
+        WHERE t.user_id = $1 GROUP BY t.id ORDER BY count DESC LIMIT 8`, [user.id]
+    )
+  ]);
+  return { summary: summary.rows[0], languages: languages.rows, statuses: statuses.rows, tags: tags.rows };
+});
+
 app.post("/api/sync", async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
@@ -439,17 +787,26 @@ app.post("/api/sync", async (request, reply) => {
 app.get("/api/backup", async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
-  const [repositories, collections] = await Promise.all([
+  const [repositories, collections, tags, repositoryTags] = await Promise.all([
     pool.query(
       `SELECT r.*, ur.collection_id, ur.source, ur.starred, ur.favorite,
-              ur.archived, ur.note, ur.starred_at
+              ur.archived, ur.note, ur.rating, ur.read_status, ur.starred_at
          FROM user_repositories ur
          JOIN repositories r ON r.id = ur.repository_id
         WHERE ur.user_id = $1 AND ur.hidden = false`,
       [user.id]
     ),
     pool.query(
-      "SELECT id, name, color, created_at FROM collections WHERE user_id = $1",
+      `SELECT id, name, color, description, icon, pinned, sort_order, created_at
+         FROM collections WHERE user_id = $1`,
+      [user.id]
+    ),
+    pool.query(
+      "SELECT id, name, color, description, created_at FROM tags WHERE user_id = $1",
+      [user.id]
+    ),
+    pool.query(
+      `SELECT repository_id, tag_id FROM repository_tags WHERE user_id = $1`,
       [user.id]
     )
   ]);
@@ -459,9 +816,12 @@ app.get("/api/backup", async (request, reply) => {
   );
   return {
     version: "0.1.0",
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     repositories: repositories.rows,
-    collections: collections.rows
+    collections: collections.rows,
+    tags: tags.rows,
+    repositoryTags: repositoryTags.rows
   };
 });
 
@@ -472,6 +832,9 @@ app.setErrorHandler((error, request, reply) => {
       error: "validation_error",
       details: z.treeifyError(error)
     });
+  }
+  if ((error as { code?: string }).code === "23505") {
+    return reply.code(409).send({ error: "already_exists" });
   }
   return reply.code(500).send({ error: "internal_server_error" });
 });

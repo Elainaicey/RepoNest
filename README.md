@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./public/og.png" alt="RepoNest — 让每一颗 Star 都有归处" width="100%" />
+  <img src="./public/og-v2.png" alt="RepoNest — 让每一颗 Star 都有归处" width="100%" />
 
   <h1>RepoNest</h1>
 
@@ -17,7 +17,7 @@
 
 ---
 
-RepoNest 是一个面向开发者的 GitHub 星标与综合收藏管理器。它通过 GitHub App OAuth 登录，自动同步星标，并用收藏集、特别关注、笔记、搜索与归档，把散落的项目整理成可以长期使用的个人技术资料库。
+RepoNest 是一个面向开发者的综合性 GitHub 收藏管理器。它通过 GitHub App OAuth 登录，自动同步星标，并用收藏集、多标签、处理状态、评分、笔记、批量操作与洞察，把散落的项目整理成可以长期使用的个人技术资料库。
 
 > [!IMPORTANT]
 > RepoNest 仍处于积极开发阶段，内部版本号保持为 `0.1.0`，暂不创建正式 Release。升级前请备份 PostgreSQL 数据卷。
@@ -28,9 +28,14 @@ RepoNest 是一个面向开发者的 GitHub 星标与综合收藏管理器。它
 - 登录后立即同步 GitHub 星标，服务端按计划自动同步
 - GitHub 短期用户令牌自动刷新；访问令牌与刷新令牌使用 AES-256-GCM 加密
 - PostgreSQL 持久化，数据不再依赖单台设备的浏览器存储
-- 真实 App Router 页面：概览、星标、稍后收藏、特别关注、归档、收藏集和设置
-- 手动收藏 GitHub 仓库、搜索、分类、关注、归档与 JSON 备份
-- 明暗主题、响应式布局、键盘焦点状态与克制的 Radix 风格色阶
+- 真实 App Router 页面：概览、全部收藏、星标、稍后收藏、特别关注、归档、收藏集、标签、洞察和设置
+- 收藏集与多标签双层组织，支持待整理 / 探索中 / 已采用工作流、五星评分和私人笔记
+- 搜索名称、简介、笔记与标签，并按标签、语言、状态组合筛选，支持五种排序与卡片 / 列表视图
+- 多选项目后批量移动分组、修改状态、特别关注或归档；详情抽屉集中编辑全部个人信息
+- 语言、处理状态和高频标签洞察，帮助控制待整理积压
+- 命令面板、操作反馈、无障碍 Dialog / Popover / Menu、响应式布局和明暗主题
+- 手动收藏 GitHub 仓库、完整 JSON 备份与增量数据库迁移
+- 基于 Radix 12 级色阶原则的语义色彩，搭配亚克力工具栏、微交互与尊重减弱动态偏好的环境粒子
 - Web / API 独立容器，支持 `linux/amd64` 与 `linux/arm64`
 
 ## 架构
@@ -144,6 +149,7 @@ docker image prune -f
 ```
 
 数据保存在 Docker volume `reponest_reponest-data` 中，更新容器不会删除它。
+API 启动时会按顺序执行尚未应用的 SQL migration；从旧版升级会自动补充标签、处理状态与评分字段，不需要重新部署数据库。
 
 ## 本地开发
 
@@ -179,6 +185,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ```bash
 npm run lint
+npm run typecheck
 npm test
 npm run test:api
 ```
@@ -188,7 +195,7 @@ npm run test:api
 | 层级 | 技术 |
 | --- | --- |
 | Web | React 19、Next.js App Router、TypeScript、vinext、TanStack Query |
-| UI | CSS design tokens、Radix 色阶原则、Lucide |
+| UI | Radix Primitives、CSS design tokens、Radix 色阶原则、Lucide |
 | API | Fastify 5、Node.js 24、Zod |
 | 身份 | GitHub App user OAuth、PKCE、加密令牌、服务端会话 |
 | 数据 | PostgreSQL 17、SQL migrations |
@@ -202,7 +209,7 @@ RepoNest/
 │  ├─ (product)/              # 需要登录的产品页面
 │  ├─ demo/                   # 无需后端的只读演示
 │  └─ login/
-├─ components/                # Shell、资料库卡片、概览与设置
+├─ components/                # Shell、资料库、详情抽屉、标签、洞察与设置
 ├─ lib/                       # Web API 客户端、类型与演示数据
 ├─ server/
 │  ├─ migrations/             # PostgreSQL schema
@@ -223,9 +230,9 @@ RepoNest/
 
 ## 路线图
 
-- [x] `0.1` 前后端分离、GitHub OAuth、自动同步、PostgreSQL 与多路由 UI
-- [ ] `0.2` 批量操作、备份恢复、Netscape Bookmark 导入
-- [ ] `0.3` 全文索引、智能标签、相似项目发现
+- [x] `0.1` 前后端分离、GitHub OAuth、自动同步、分组 / 标签、批量整理、洞察、PostgreSQL 与多路由 UI
+- [ ] `0.2` 备份恢复、Netscape Bookmark 导入与可保存的智能视图
+- [ ] `0.3` PostgreSQL 全文索引、智能标签、相似项目发现
 - [ ] `0.4` 管理员设置、Webhook 与同步任务队列
 - [ ] `1.0` 稳定迁移策略、完整可观测性与正式 Release
 
