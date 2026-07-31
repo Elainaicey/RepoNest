@@ -131,7 +131,7 @@ export default function Home() {
               <Boxes size={20} />
             </span>
             <h3>自己的数据</h3>
-            <p>PostgreSQL 持久化、JSON 导出与 Docker Compose 部署，不绑定第三方平台。</p>
+            <p>内嵌数据库持久化、JSON 导出与 Docker Compose 部署，不绑定第三方平台。</p>
           </article>
           <article>
             <span className="feature-icon plum"><Tags size={20} /></span>

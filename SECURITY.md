@@ -29,9 +29,9 @@ RepoNest 仍处于正式发布前阶段，目前只维护 `main` 分支上的最
 - 数据库中的 GitHub access/refresh token 使用 AES-256-GCM 加密。
 - 数据库只保存会话 Cookie 的 SHA-256 哈希。
 - 不安全的跨源写请求会被 API 拒绝。
-- 生产 Compose 仅把 Web/API 端口绑定到 `127.0.0.1`，PostgreSQL 不暴露宿主机端口。
+- 生产 Compose 只把统一应用端口绑定到 `127.0.0.1`；内嵌数据库没有网络监听端口。
 - 生产部署必须使用 HTTPS，并妥善保存 `TOKEN_ENCRYPTION_KEY`、GitHub Client secret 与数据库密码。
 
 ## Deployment responsibility
 
-自托管管理员应及时更新容器、限制 VPS 管理端口、备份 PostgreSQL 数据卷，并保护 `.env`。如果 `TOKEN_ENCRYPTION_KEY` 泄露，应立即轮换 GitHub App Client secret、撤销用户授权，并重新建立加密令牌。
+自托管管理员应及时更新容器、限制 VPS 管理端口、异机备份 `/opt/reponest/data`，并保护 `.env`。如果 `TOKEN_ENCRYPTION_KEY` 泄露，应立即轮换 GitHub App Client secret、撤销用户授权，并重新建立加密令牌。

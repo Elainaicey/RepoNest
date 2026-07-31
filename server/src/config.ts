@@ -1,18 +1,21 @@
 import { z } from "zod";
 
-const optionalUrl = z.string().url().optional();
+const encryptionKey = z
+  .string()
+  .refine((value) => Buffer.from(value, "base64").length === 32, {
+    message: "TOKEN_ENCRYPTION_KEY must be a Base64-encoded 32-byte key."
+  });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(4000),
-  DATABASE_URL: z.string().min(1).default("postgres://reponest:reponest@localhost:5432/reponest"),
+  DATABASE_PATH: z.string().min(1).default("../data/database"),
   PUBLIC_URL: z.string().url().default("http://localhost:3000"),
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
-  GITHUB_CALLBACK_URL: optionalUrl,
   GITHUB_API_VERSION: z.string().default("2026-03-10"),
-  TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  TOKEN_ENCRYPTION_KEY: encryptionKey.optional(),
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
   SYNC_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
   MAX_SYNC_PAGES: z.coerce.number().int().min(1).max(100).default(50),
@@ -24,9 +27,7 @@ const parsed = envSchema.parse(process.env);
 export const config = {
   ...parsed,
   publicUrl: new URL(parsed.PUBLIC_URL),
-  callbackUrl:
-    parsed.GITHUB_CALLBACK_URL ??
-    new URL("/api/auth/github/callback", parsed.PUBLIC_URL).toString(),
+  callbackUrl: new URL("/api/auth/github/callback", parsed.PUBLIC_URL).toString(),
   secureCookies:
     parsed.COOKIE_SECURE === "true" ||
     (parsed.COOKIE_SECURE !== "false" && parsed.NODE_ENV === "production"),

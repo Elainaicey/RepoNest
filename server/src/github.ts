@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { PoolClient } from "pg";
 import { config } from "./config.js";
 import { decrypt, encrypt } from "./crypto.js";
-import { pool } from "./db.js";
+import { pool, type DbClient } from "./db.js";
 
 type GitHubTokenResponse = {
   access_token: string;
@@ -177,7 +176,7 @@ async function accessTokenForUser(userId: string) {
 }
 
 async function upsertRepository(
-  client: PoolClient,
+  client: DbClient,
   repository: GitHubRepository
 ) {
   const result = await client.query<{ id: string }>(

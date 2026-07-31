@@ -29,7 +29,7 @@ npm run dev
 npm run dev:api
 ```
 
-API 需要 PostgreSQL 和 `.env` 中的 GitHub App 配置。完整变量见 `.env.example`。
+API 使用内嵌数据库，只需要 `.env` 中的 GitHub App 配置。完整变量见 `.env.example`。
 
 ## 提交前检查
 
@@ -45,8 +45,7 @@ bash -n deploy/install.sh deploy/reponestctl
 
 ```bash
 docker compose config
-docker build -t reponest-web:test .
-docker build -f Dockerfile.api -t reponest-api:test .
+docker build -t reponest:test .
 ```
 
 ## Pull Request

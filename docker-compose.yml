@@ -1,117 +1,49 @@
 name: reponest
 
-x-app-defaults: &app-defaults
-  restart: unless-stopped
-  init: true
-  read_only: true
-  cap_drop:
-    - ALL
-  security_opt:
-    - no-new-privileges:true
-  pids_limit: 256
-  stop_grace_period: 20s
-  logging:
-    driver: json-file
-    options:
-      max-size: ${REPONEST_LOG_MAX_SIZE:-10m}
-      max-file: ${REPONEST_LOG_MAX_FILES:-3}
-
 services:
-  web:
-    <<: *app-defaults
-    image: ghcr.io/elainaicey/reponest-web:${REPONEST_VERSION:-latest}
+  app:
+    image: ghcr.io/elainaicey/reponest:${REPONEST_VERSION:-latest}
     pull_policy: always
-    container_name: reponest-web
+    container_name: reponest
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    pids_limit: 256
+    stop_grace_period: 30s
     ports:
-      - "127.0.0.1:${REPONEST_WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${REPONEST_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
-      HOSTNAME: 0.0.0.0
       PORT: 3000
-    tmpfs:
-      - /tmp:size=64m,noexec,nosuid
-    networks:
-      - edge
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
-  api:
-    <<: *app-defaults
-    image: ghcr.io/elainaicey/reponest-api:${REPONEST_VERSION:-latest}
-    pull_policy: always
-    container_name: reponest-api
-    depends_on:
-      database:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:${REPONEST_API_PORT:-4000}:4000"
-    environment:
-      NODE_ENV: production
-      HOST: 0.0.0.0
-      PORT: 4000
-      DATABASE_URL: postgres://${POSTGRES_USER:-reponest}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@database:5432/${POSTGRES_DB:-reponest}
+      DATABASE_PATH: /data/database
       PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL in .env}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?Set GITHUB_CLIENT_ID in .env}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?Set GITHUB_CLIENT_SECRET in .env}
-      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:?Set GITHUB_CALLBACK_URL in .env}
       GITHUB_API_VERSION: ${GITHUB_API_VERSION:-2026-03-10}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?Set TOKEN_ENCRYPTION_KEY in .env}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
       SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-60}
       MAX_SYNC_PAGES: ${MAX_SYNC_PAGES:-50}
+    volumes:
+      - ${REPONEST_DATA_DIR:-./data}:/data
     tmpfs:
-      - /tmp:size=64m,noexec,nosuid
-    networks:
-      - edge
-      - data
+      - /tmp:size=128m,noexec,nosuid
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 25s
-
-  database:
-    image: postgres:17-alpine
-    pull_policy: always
-    container_name: reponest-database
-    restart: unless-stopped
-    stop_grace_period: 60s
-    shm_size: 128mb
-    pids_limit: 256
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-reponest}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-reponest}
-      POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:---data-checksums}
-    volumes:
-      - ${REPONEST_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
-    tmpfs:
-      - /tmp:size=64m,noexec,nosuid
-    networks:
-      - data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-    security_opt:
-      - no-new-privileges:true
+      start_period: 30s
     logging:
       driver: json-file
       options:
         max-size: ${REPONEST_LOG_MAX_SIZE:-10m}
         max-file: ${REPONEST_LOG_MAX_FILES:-3}
-
-networks:
-  edge:
-    name: reponest-edge
-  data:
-    name: reponest-data-network
-    internal: true

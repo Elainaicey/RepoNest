@@ -1,16 +1,86 @@
-import { readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
+import { PGlite } from "@electric-sql/pglite";
 import { config } from "./config.js";
 
-const { Pool } = pg;
+export type QueryResult<T extends Record<string, unknown> = Record<string, unknown>> = {
+  rows: T[];
+  rowCount: number;
+};
 
-export const pool = new Pool({
-  connectionString: config.DATABASE_URL,
-  max: 10,
-  idleTimeoutMillis: 30_000
-});
+export type DbClient = {
+  query<T extends Record<string, unknown> = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[]
+  ): Promise<QueryResult<T>>;
+  exec(sql: string): Promise<void>;
+  release(): void;
+};
+
+if (!config.DATABASE_PATH.includes("://")) {
+  await mkdir(config.DATABASE_PATH, { recursive: true });
+}
+
+const database = await PGlite.create(config.DATABASE_PATH);
+
+function normalize<T extends Record<string, unknown>>(
+  result: Awaited<ReturnType<PGlite["query"]>>
+): QueryResult<T> {
+  return {
+    rows: result.rows as T[],
+    rowCount: result.affectedRows ?? result.rows.length
+  };
+}
+
+async function query<T extends Record<string, unknown> = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = []
+) {
+  return normalize<T>(await database.query(sql, params));
+}
+
+let queue = Promise.resolve();
+
+async function acquire() {
+  const previous = queue;
+  let release: () => void = () => {};
+  queue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  return release;
+}
+
+export const pool = {
+  async query<T extends Record<string, unknown> = Record<string, unknown>>(
+    sql: string,
+    params: unknown[] = []
+  ) {
+    const release = await acquire();
+    try {
+      return await query<T>(sql, params);
+    } finally {
+      release();
+    }
+  },
+
+  async connect(): Promise<DbClient> {
+    const unlock = await acquire();
+    let released = false;
+    return {
+      query,
+      async exec(sql: string) {
+        await database.exec(sql);
+      },
+      release() {
+        if (released) return;
+        released = true;
+        unlock();
+      }
+    };
+  }
+};
 
 export async function migrate() {
   const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -37,7 +107,7 @@ export async function migrate() {
       const sql = await readFile(join(migrationsDir, migration), "utf8");
       await client.query("BEGIN");
       try {
-        await client.query(sql);
+        await client.exec(sql);
         await client.query(
           "INSERT INTO schema_migrations (name) VALUES ($1)",
           [migration]
@@ -54,5 +124,6 @@ export async function migrate() {
 }
 
 export async function closeDatabase() {
-  await pool.end();
+  await queue;
+  await database.close();
 }

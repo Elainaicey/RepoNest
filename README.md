@@ -4,59 +4,64 @@
   <h1>RepoNest</h1>
 
   <p><strong>让每一颗 Star，都有安静的归处。</strong></p>
-  <p>GitHub 自动同步 · 前后端分离 · 自托管 · 开源</p>
+  <p>GitHub 自动同步 · 收藏集与标签 · 单容器自托管 · 开源</p>
 
   <p>
     <a href="https://github.com/Elainaicey/RepoNest/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Elainaicey/RepoNest/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
-    <a href="https://github.com/Elainaicey/RepoNest/pkgs/container/reponest-web"><img src="https://img.shields.io/badge/GHCR-web-5b5bd6?style=flat-square&logo=docker&logoColor=white" alt="Web image" /></a>
-    <a href="https://github.com/Elainaicey/RepoNest/pkgs/container/reponest-api"><img src="https://img.shields.io/badge/GHCR-api-208368?style=flat-square&logo=docker&logoColor=white" alt="API image" /></a>
-    <img src="https://img.shields.io/badge/status-active%20development-ab4aba?style=flat-square" alt="Active development" />
+    <a href="https://github.com/Elainaicey/RepoNest/pkgs/container/reponest"><img src="https://img.shields.io/badge/GHCR-reponest-5b5bd6?style=flat-square&logo=docker&logoColor=white" alt="RepoNest image" /></a>
+    <img src="https://img.shields.io/badge/version-0.1.0-ab4aba?style=flat-square" alt="Version 0.1.0" />
     <a href="./LICENSE"><img src="https://img.shields.io/github/license/Elainaicey/RepoNest?style=flat-square" alt="License" /></a>
   </p>
 </div>
 
 ---
 
-RepoNest 是一个面向开发者的综合性 GitHub 收藏管理器。它通过 GitHub App OAuth 登录，自动同步星标，并用收藏集、多标签、处理状态、评分、笔记、批量操作与洞察，把散落的项目整理成可以长期使用的个人技术资料库。
+RepoNest 是一个面向开发者的综合性 GitHub 收藏管理器。它通过 GitHub App OAuth 登录并自动同步星标，再用收藏集、多标签、处理状态、评分、笔记、批量操作和洞察，把散落的项目整理成可以长期维护的个人技术资料库。
 
 > [!IMPORTANT]
-> RepoNest 仍处于积极开发阶段，内部版本号保持为 `0.1.0`，暂不创建正式 Release。升级前请备份 PostgreSQL 数据卷。
+> 当前版本为 `0.1.0`，仍处于积极开发阶段，暂不创建正式 GitHub Release。
 
-## 已实现
+## 功能
 
 - GitHub App OAuth 登录，支持 PKCE、state 校验和 HttpOnly 会话 Cookie
-- 登录后立即同步 GitHub 星标，服务端按计划自动同步
-- GitHub 短期用户令牌自动刷新；访问令牌与刷新令牌使用 AES-256-GCM 加密
-- PostgreSQL 持久化，数据不再依赖单台设备的浏览器存储
-- 真实 App Router 页面：概览、全部收藏、星标、稍后收藏、特别关注、归档、收藏集、标签、洞察和设置
-- 收藏集与多标签双层组织，支持待整理 / 探索中 / 已采用工作流、五星评分和私人笔记
-- 搜索名称、简介、笔记与标签，并按标签、语言、状态组合筛选，支持五种排序与卡片 / 列表视图
-- 多选项目后批量移动分组、修改状态、特别关注或归档；详情抽屉集中编辑全部个人信息
-- 语言、处理状态和高频标签洞察，帮助控制待整理积压
-- 命令面板、操作反馈、无障碍 Dialog / Popover / Menu、响应式布局和明暗主题
-- 手动收藏 GitHub 仓库、完整 JSON 备份与增量数据库迁移
-- 基于 Radix 12 级色阶原则的语义色彩，搭配亚克力工具栏、微交互与尊重减弱动态偏好的环境粒子
-- Web / API 独立容器，支持 `linux/amd64` 与 `linux/arm64`
-- 可见的宿主机数据目录、数据库备份 / 恢复、旧卷迁移、健康诊断、日志轮转和一键升级工具
+- 登录后立即同步 GitHub 星标，并按计划自动增量同步
+- GitHub 短期令牌自动刷新；访问令牌使用 AES-256-GCM 加密保存
+- 收藏集与多标签组织，支持待整理、探索中、已采用三种处理状态
+- 特别关注、归档、五星评分、私人笔记和最近打开记录
+- 名称、简介、笔记和标签搜索，支持组合筛选、排序与卡片/列表视图
+- 批量移动收藏集、修改状态、特别关注、归档和标签调整
+- 语言、状态与标签洞察，帮助发现收藏结构和待整理积压
+- 手动收藏 GitHub 仓库和完整 JSON 数据导出
+- 响应式多路由界面、命令面板、明暗主题、无障碍交互与 Radix 色阶系统
+- 单镜像、单容器、单端口部署，支持 `linux/amd64` 与 `linux/arm64`
+- 宿主机可见数据目录、离线一致性备份、恢复回滚、健康诊断和日志轮转
 
 ## 架构
 
 ```text
 Browser
-  ├─ /        ──> Web · Next.js / React / vinext :3000
-  └─ /api/*   ──> API · Fastify / Node.js 24     :4000
-                         │
-                         ├─ GitHub REST API
-                         └─ PostgreSQL 17
+   │
+ Caddy · HTTPS
+   │  127.0.0.1:3000
+   ▼
+┌──────────────────────── RepoNest container ────────────────────────┐
+│  Unified gateway                                                   │
+│       ├─ /        → Next.js / React / vinext                       │
+│       └─ /api/*   → Fastify / GitHub OAuth / synchronization       │
+│                                      │                              │
+│                             Embedded PostgreSQL                    │
+│                             /data/database                         │
+└──────────────────────────────────────┼──────────────────────────────┘
+                                       └─ GitHub REST API
 ```
 
-Web 与 API 分别构建、发布和扩容；Caddy 提供同域 HTTPS 与路由，因此 OAuth Cookie 不需要跨域配置。标准自托管部署会运行 Web、API、PostgreSQL 三个单一职责容器，这属于有状态前后端分离项目的正常架构，不等于重复运行三份应用。
+前端和后端在源码中保持清晰分层，但生产环境统一构建为 `ghcr.io/elainaicey/reponest`。数据库使用 [PGlite](https://pglite.dev/) 在 Node.js 内嵌运行，无需额外数据库服务，因此整套应用只运行一个 Docker 容器。
 
 ## Debian / Ubuntu 部署
 
 ### 1. 创建 GitHub App
 
-打开 GitHub **Settings → Developer settings → GitHub Apps → New GitHub App**，建议填写：
+打开 GitHub **Settings → Developer settings → GitHub Apps → New GitHub App**：
 
 | 字段 | 示例 |
 | --- | --- |
@@ -65,9 +70,9 @@ Web 与 API 分别构建、发布和扩容；Caddy 提供同域 HTTPS 与路由�
 | Webhook | 关闭 |
 | User permissions → Starring | Read-only |
 
-启用用户访问令牌过期，然后生成 Client secret。记下 GitHub App 的 Client ID 和 Client secret。
+生成 Client secret，并记下 GitHub App 的 Client ID 与 Client secret。
 
-### 2. 安装生产部署包
+### 2. 安装
 
 ```bash
 sudo apt update
@@ -81,118 +86,98 @@ sudo sh /tmp/reponest-install.sh
 sudo nano /opt/reponest/.env
 ```
 
-安装器会创建以下结构：
+安装目录：
 
 ```text
 /opt/reponest/
 ├── docker-compose.yml
 ├── .env
+├── .reponest-install     # 安装目录标识
 ├── reponestctl
 ├── Caddyfile.example
 ├── DEPLOYMENT.md
-├── data/postgres/          # PostgreSQL 持久数据
-├── backups/               # 压缩备份与校验文件
-└── systemd/               # 可选的每日备份定时器
+├── data/
+│   └── database/          # 全部持久数据
+└── backups/              # 压缩备份和校验文件
 ```
 
-在 `.env` 中填写：
+编辑 `.env`：
 
 ```env
 REPONEST_VERSION=latest
-REPONEST_WEB_PORT=3000
-REPONEST_API_PORT=4000
+REPONEST_PORT=3000
+REPONEST_DATA_DIR=./data
 
 PUBLIC_URL=https://reponest.ushio.cc
-GITHUB_CALLBACK_URL=https://reponest.ushio.cc/api/auth/github/callback
-GITHUB_CLIENT_ID=你的_GitHub_App_Client_ID
-GITHUB_CLIENT_SECRET=你的_GitHub_App_Client_secret
+GITHUB_CLIENT_ID=你的_Client_ID
+GITHUB_CLIENT_SECRET=你的_Client_secret
 TOKEN_ENCRYPTION_KEY=使用下方命令生成
-
-POSTGRES_USER=reponest
-POSTGRES_PASSWORD=使用长随机值
-POSTGRES_DB=reponest
-REPONEST_DATA_DIR=./data/postgres
 ```
 
-生成两个随机值：
+生成令牌加密密钥：
 
 ```bash
 openssl rand -base64 32
-openssl rand -hex 32
 ```
 
-第一个填入 `TOKEN_ENCRYPTION_KEY`，第二个填入 `POSTGRES_PASSWORD`。
-
-### 3. 启动与检查
+### 3. 启动
 
 ```bash
 cd /opt/reponest
 sudo ./reponestctl start
-sudo ./reponestctl health
+sudo ./reponestctl doctor
 ```
 
-Web 和 API 仅监听 `127.0.0.1`，数据库仅连接内部 Docker 网络，不暴露到宿主机。容器日志启用了大小和数量轮转，避免长期运行占满磁盘。
+也可以直接使用标准 Docker Compose：
+
+```bash
+sudo docker compose pull
+sudo docker compose up -d --remove-orphans
+```
+
+`docker compose ps` 应只显示一个名为 `reponest` 的容器。
 
 ### 4. Caddy 反向代理
-
-`/etc/caddy/Caddyfile`：
 
 ```caddyfile
 reponest.ushio.cc {
     encode zstd gzip
-
-    @api path /api/*
-    reverse_proxy @api 127.0.0.1:4000
     reverse_proxy 127.0.0.1:3000
 }
 ```
-
-检查并加载：
 
 ```bash
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-确认域名 DNS 的 A/AAAA 记录已指向 VPS，并开放 80/443 端口。随后访问 `https://reponest.ushio.cc`。
+确保域名 A/AAAA 记录指向 VPS，并开放 80/443 端口。
 
-### 更新
+## 运维
+
+推荐更新方式：
 
 ```bash
 cd /opt/reponest
 sudo ./reponestctl update latest
 ```
 
-更新工具会先创建 PostgreSQL 备份，再拉取镜像、运行增量迁移、等待健康状态并执行端到端检查；它不会自动删除旧镜像，便于回滚。
-
-常用运维命令：
+管理工具会在更新前停止应用并创建一致性备份，然后拉取镜像、启动并执行健康检查。
 
 ```bash
 sudo ./reponestctl status
-sudo ./reponestctl logs api
+sudo ./reponestctl logs
+sudo ./reponestctl health
 sudo ./reponestctl backup
+sudo ./reponestctl restore backups/reponest-YYYYMMDDTHHMMSSZ.tar.gz
 sudo ./reponestctl doctor
-sudo ./reponestctl restore backups/reponest-YYYYMMDDTHHMMSSZ.sql.gz
 ```
 
-### 从旧命名卷迁移
-
-旧版将数据库保存在 Docker 命名卷 `reponest_reponest-data`，宿主机通常位于 `/var/lib/docker/volumes/reponest_reponest-data/_data`。安装新版部署包后执行：
-
-```bash
-cd /opt/reponest
-sudo ./reponestctl migrate-volume
-sudo ./reponestctl update latest
-```
-
-迁移工具会在数据库运行时先做逻辑备份，然后停止容器、把旧卷完整复制到 `/opt/reponest/data/postgres`、验证 PostgreSQL 数据目录、重新启动并执行健康检查。旧卷不会被自动删除。
-
-> [!WARNING]
-> 已有部署必须先运行 `migrate-volume`，再使用新的绑定目录启动数据库；不要直接删除 `reponest_reponest-data`。
+备份会产生短暂停机，以保证内嵌数据库文件处于一致状态。请把重要备份复制到另一台机器或对象存储；同一 VPS 上的备份无法防范整盘损坏。
 
 ## 本地开发
 
-需要 Node.js 24 和 PostgreSQL 17：
+需要 Node.js 24，无需安装 PostgreSQL：
 
 ```bash
 git clone https://github.com/Elainaicey/RepoNest.git
@@ -202,31 +187,21 @@ npm install --prefix server
 cp .env.example .env
 ```
 
-终端一：
+分别启动 Web 和 API；开发服务器会把 `/api` 自动转发到本地 API：
 
 ```bash
 npm run dev
-```
-
-终端二：
-
-```bash
 npm run dev:api
 ```
 
-也可以从源码构建完整容器：
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-```
-
-提交前验证：
+完整验证：
 
 ```bash
 npm run lint
 npm run typecheck
 npm test
 npm run test:api
+docker build -t reponest:local .
 ```
 
 ## 技术栈
@@ -234,47 +209,44 @@ npm run test:api
 | 层级 | 技术 |
 | --- | --- |
 | Web | React 19、Next.js App Router、TypeScript、vinext、TanStack Query |
-| UI | Radix Primitives、CSS design tokens、Radix 色阶原则、Lucide |
+| UI | Radix Primitives、Lucide、CSS design tokens、Radix 色阶原则 |
 | API | Fastify 5、Node.js 24、Zod |
-| 身份 | GitHub App user OAuth、PKCE、加密令牌、服务端会话 |
-| 数据 | PostgreSQL 17、SQL migrations |
+| 身份 | GitHub App OAuth、PKCE、加密令牌、服务端会话 |
+| 数据 | PGlite、PostgreSQL SQL、增量迁移 |
 | 交付 | Docker Compose、GHCR、Caddy、GitHub Actions |
 
 ## 项目结构
 
 ```text
 RepoNest/
-├─ app/                        # 页面、路由与全局视觉系统
-│  ├─ (product)/              # 需要登录的产品页面
-│  ├─ demo/                   # 无需后端的只读演示
-│  └─ login/
-├─ components/                # Shell、资料库、详情抽屉、标签、洞察与设置
-├─ lib/                       # Web API 客户端、类型与演示数据
+├─ app/                    # 页面与路由
+├─ components/             # 产品组件与交互
+├─ lib/                    # Web API 客户端、类型与演示数据
 ├─ server/
-│  ├─ migrations/             # PostgreSQL schema
-│  ├─ src/                    # OAuth、同步、会话与 REST API
-│  └─ tests/
-├─ deploy/                    # 安装器、reponestctl、Caddy 与部署指南
-├─ Dockerfile                 # Web 镜像
-├─ Dockerfile.api             # API 镜像
-└─ docker-compose.yml
+│  ├─ migrations/         # 数据库结构迁移
+│  ├─ src/                # OAuth、同步、会话与 REST API
+│  └─ tests/              # API 与数据库测试
+├─ deploy/                # 安装、管理、Caddy 与容器运行入口
+├─ tests/                 # Web 与部署契约测试
+├─ Dockerfile             # 唯一生产镜像
+└─ docker-compose.yml     # 唯一生产服务
 ```
 
-## 安全说明
+## 安全
 
-- GitHub Client secret、令牌加密密钥和数据库密码只能放在 `.env`，不要提交到 Git。
-- `TOKEN_ENCRYPTION_KEY` 丢失后，数据库中的 GitHub 令牌无法恢复；请安全备份。
-- OAuth 令牌不会返回给浏览器。数据库只保存加密令牌，会话表只保存 Cookie 的 SHA-256 哈希。
-- 生产环境必须使用 HTTPS；Compose 默认把 Web/API 端口限制在 loopback。
-- 漏洞报告请阅读 [SECURITY.md](./SECURITY.md)。
+- GitHub Client secret 和 `TOKEN_ENCRYPTION_KEY` 只能保存在 `.env`，不要提交到 Git。
+- `TOKEN_ENCRYPTION_KEY` 丢失后，数据库中的 GitHub 令牌无法解密，请单独安全备份。
+- OAuth 令牌不会发送到浏览器；数据库保存加密令牌，会话表只保存 Cookie 哈希。
+- Compose 只监听 `127.0.0.1`，生产环境必须通过 HTTPS 反向代理访问。
+- 漏洞报告方式见 [SECURITY.md](./SECURITY.md)。
 
 ## 路线图
 
-- [x] `0.1` 前后端分离、GitHub OAuth、自动同步、分组 / 标签、批量整理、洞察、PostgreSQL 与多路由 UI
-- [ ] `0.2` 备份恢复、Netscape Bookmark 导入与可保存的智能视图
-- [ ] `0.3` PostgreSQL 全文索引、智能标签、相似项目发现
-- [ ] `0.4` 管理员设置、Webhook 与同步任务队列
-- [ ] `1.0` 稳定迁移策略、完整可观测性与正式 Release
+- [x] `0.1.0` OAuth、同步、收藏集、标签、批量整理、洞察、多路由 UI 与单容器部署
+- [ ] 可保存智能视图与浏览器书签导入
+- [ ] 全文搜索、智能标签与相似项目发现
+- [ ] Webhook、同步任务队列与管理员设置
+- [ ] 稳定迁移策略、完整可观测性与正式 Release
 
 ## 参与贡献
 

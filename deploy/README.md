@@ -1,70 +1,57 @@
-# RepoNest deployment bundle
+# RepoNest deployment
 
-This directory contains the files used to create a production-style installation in `/opt/reponest`. PostgreSQL is bind-mounted at `/opt/reponest/data/postgres` by default, so administrators can see exactly where durable data lives.
+RepoNest ships as one image and one Compose service. The Web application, API, OAuth flow, GitHub synchronization, and embedded PostgreSQL-compatible database are delivered together through a single loopback port.
 
 ## Installed layout
 
 ```text
 /opt/reponest/
-├── docker-compose.yml     # Web, API, and PostgreSQL service definitions
-├── .env                   # Secrets and deployment settings (mode 600)
-├── reponestctl            # Start, update, backup, restore, and diagnostics
-├── Caddyfile.example      # Same-origin HTTPS reverse-proxy example
-├── DEPLOYMENT.md          # This guide
+├── docker-compose.yml
+├── .env
+├── .reponest-install     # Installation marker
+├── reponestctl
+├── Caddyfile.example
+├── DEPLOYMENT.md
 ├── data/
-│   └── postgres/          # Durable PostgreSQL data visible on the host
-├── backups/               # Compressed logical backups and checksums
-└── systemd/               # Optional daily backup service and timer
+│   └── database/          # Durable application data
+└── backups/              # Offline database snapshots and checksums
 ```
 
-Container logs use Docker log rotation and can be read with `./reponestctl logs`.
-The `data/postgres` directory is visible for backup and capacity planning, but its files are PostgreSQL internals and must never be edited manually while the database is running.
+Only `data/database` is required to preserve the application state. Container images remain managed by Docker, while logs use Docker's configured size and file-count limits.
 
-## Why three containers?
-
-RepoNest intentionally runs three single-purpose services:
-
-- `reponest-web`: public Next.js interface;
-- `reponest-api`: OAuth, GitHub synchronization, and REST API;
-- `reponest-database`: PostgreSQL persistence.
-
-This separation provides independent health checks, least-privilege boundaries, straightforward database backups, and safer upgrades. A single container would still contain multiple processes and would make failure handling and persistence less transparent. An installation with an externally managed PostgreSQL server can reduce the local count to two containers, but the standard self-contained deployment uses three.
-
-## Common operations
+## Start and inspect
 
 ```bash
+cd /opt/reponest
 sudo ./reponestctl start
-sudo ./reponestctl status
-sudo ./reponestctl health
-sudo ./reponestctl logs api
-sudo ./reponestctl backup
-sudo ./reponestctl update latest
 sudo ./reponestctl doctor
+sudo docker compose ps
 ```
 
-Optional daily backups at approximately 03:15 can be enabled with:
+Exactly one container named `reponest` should be running. It binds only to `127.0.0.1:3000` by default.
+
+## Caddy
+
+```caddyfile
+reponest.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+The GitHub App homepage and callback must use the same public origin. For the example above, the callback is `https://reponest.example.com/api/auth/github/callback`.
+
+## Operations
 
 ```bash
-sudo cp systemd/reponest-backup.* /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now reponest-backup.timer
-systemctl list-timers reponest-backup.timer
+sudo ./reponestctl status
+sudo ./reponestctl logs
+sudo ./reponestctl health
+sudo ./reponestctl update latest
+sudo ./reponestctl backup
+sudo ./reponestctl restore backups/reponest-YYYYMMDDTHHMMSSZ.tar.gz
 ```
 
-Copy important backups to a second machine or object-storage provider; a backup on the same VPS does not protect against disk loss.
+Backup briefly stops the container before archiving the database directory, then restarts and verifies the application. Restore validates archive paths, creates a pre-restore backup, and automatically rolls back if the restored database does not become healthy.
 
-Restore is intentionally interactive and creates a safety backup first:
-
-```bash
-sudo ./reponestctl restore backups/reponest-YYYYMMDDTHHMMSSZ.sql.gz
-```
-
-## Migrating the legacy named volume
-
-Older Compose files stored PostgreSQL in `reponest_reponest-data`. Install the new bundle, keep the old volume, and run:
-
-```bash
-sudo ./reponestctl migrate-volume
-```
-
-The command creates a logical backup when the old database is running, stops the stack, copies the volume into `data/postgres`, verifies `PG_VERSION`, starts the new stack, and runs health checks. It does **not** delete the old volume.
+Store a copy of important backups outside the VPS.

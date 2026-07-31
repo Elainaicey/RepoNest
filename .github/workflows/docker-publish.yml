@@ -1,4 +1,4 @@
-name: Publish containers
+name: Publish container
 
 on:
   push:
@@ -17,13 +17,6 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    strategy:
-      matrix:
-        include:
-          - image: reponest-web
-            dockerfile: Dockerfile
-          - image: reponest-api
-            dockerfile: Dockerfile.api
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -45,7 +38,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/elainaicey/${{ matrix.image }}
+          images: ${{ env.REGISTRY }}/elainaicey/reponest
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag
@@ -56,10 +49,10 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=reponest
+          cache-to: type=gha,mode=max,scope=reponest
