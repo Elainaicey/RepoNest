@@ -10,4 +10,6 @@ npm-debug.log*
 .dev-server*.log
 .env*
 coverage
+data
+backups
 docker-compose*.yml

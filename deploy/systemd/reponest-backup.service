@@ -1,0 +1,15 @@
+[Unit]
+Description=Create a RepoNest PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/reponest
+Environment=HOME=/tmp
+ExecStart=/opt/reponest/reponestctl backup
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/reponest/backups

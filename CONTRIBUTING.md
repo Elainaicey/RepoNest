@@ -38,6 +38,7 @@ npm run lint
 npm run typecheck
 npm test
 npm run test:api
+bash -n deploy/install.sh deploy/reponestctl
 ```
 
 涉及容器或部署的改动还应执行：

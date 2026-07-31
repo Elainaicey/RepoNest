@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+PROGRAM="${0##*/}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+if [[ -n "${REPONEST_HOME:-}" ]]; then
+  ROOT_DIR="$REPONEST_HOME"
+elif [[ -f "$SCRIPT_DIR/docker-compose.yml" ]]; then
+  ROOT_DIR="$SCRIPT_DIR"
+elif [[ -f "$SCRIPT_DIR/../docker-compose.yml" ]]; then
+  ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+else
+  ROOT_DIR="$SCRIPT_DIR"
+fi
+ENV_FILE="$ROOT_DIR/.env"
+COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
+BACKUP_DIR="$ROOT_DIR/backups"
+DEFAULT_OLD_VOLUME="reponest_reponest-data"
+
+info() { printf '[RepoNest] %s\n' "$*"; }
+warn() { printf '[RepoNest] WARNING: %s\n' "$*" >&2; }
+die() { printf '[RepoNest] ERROR: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+RepoNest deployment control
+
+Usage: ./reponestctl <command> [arguments]
+
+Commands:
+  start                       Start and wait for all services
+  stop                        Stop services without deleting data
+  restart                     Restart and wait for all services
+  status                      Show service and health status
+  logs [service]              Follow logs (web, api, or database)
+  health                      Run application and database health checks
+  update [image-tag]          Back up, pull, migrate, and restart
+  backup [filename]           Create a compressed PostgreSQL backup
+  restore <backup.sql.gz>     Restore a backup after explicit confirmation
+  migrate-volume [name]       Copy the legacy Docker volume to ./data/postgres
+  doctor                      Validate Docker, configuration, storage, and health
+  help                        Show this help
+
+Examples:
+  ./reponestctl update latest
+  ./reponestctl update sha-1045789
+  ./reponestctl backup
+  ./reponestctl logs api
+EOF
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
+}
+
+ensure_layout() {
+  [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE. Copy .env.example to .env and configure it first."
+  [[ -f "$COMPOSE_FILE" ]] || die "Missing $COMPOSE_FILE. Re-run deploy/install.sh."
+  mkdir -p "$ROOT_DIR/data/postgres" "$BACKUP_DIR"
+  chmod 700 "$BACKUP_DIR"
+}
+
+compose() {
+  docker compose \
+    --project-directory "$ROOT_DIR" \
+    --env-file "$ENV_FILE" \
+    -f "$COMPOSE_FILE" "$@"
+}
+
+validate_config() {
+  compose config --quiet || die "Compose configuration is invalid. Check $ENV_FILE."
+}
+
+service_is_running() {
+  [[ -n "$(compose ps -q "$1" 2>/dev/null)" ]]
+}
+
+env_value() {
+  local key="$1" fallback="$2" value
+  value="$(awk -F= -v wanted="$key" '
+    $0 !~ /^[[:space:]]*#/ && $1 == wanted {
+      sub(/^[^=]*=/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit
+    }
+  ' "$ENV_FILE")"
+  value="${value%\"}"; value="${value#\"}"
+  printf '%s' "${value:-$fallback}"
+}
+
+set_env_value() {
+  local key="$1" value="$2" temp
+  temp="$(mktemp "$ROOT_DIR/.env.XXXXXX")"
+  awk -F= -v wanted="$key" -v replacement="$value" '
+    BEGIN { found = 0 }
+    $1 == wanted { print wanted "=" replacement; found = 1; next }
+    { print }
+    END { if (!found) print wanted "=" replacement }
+  ' "$ENV_FILE" > "$temp"
+  chmod 600 "$temp"
+  mv -f "$temp" "$ENV_FILE"
+}
+
+start_services() {
+  ensure_layout
+  validate_config
+  info "Starting services..."
+  compose up -d --remove-orphans --wait --wait-timeout 180
+  compose ps
+}
+
+health() {
+  ensure_layout
+  validate_config
+  info "Checking Web..."
+  compose exec -T web wget -qO- http://127.0.0.1:3000/ >/dev/null
+  info "Checking API..."
+  compose exec -T api wget -qO- http://127.0.0.1:4000/api/health
+  printf '\n'
+  info "Checking PostgreSQL..."
+  compose exec -T database sh -ceu 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+  info "All checks passed."
+}
+
+backup() {
+  ensure_layout
+  require_command gzip
+  service_is_running database || die "Database is not running. Start RepoNest before creating a backup."
+
+  local requested="${1:-}" timestamp destination partial
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  if [[ -n "$requested" ]]; then
+    if [[ "$requested" = /* ]]; then destination="$requested"; else destination="$BACKUP_DIR/$requested"; fi
+  else
+    destination="$BACKUP_DIR/reponest-$timestamp.sql.gz"
+  fi
+  [[ "$destination" == *.sql.gz ]] || destination="$destination.sql.gz"
+  mkdir -p "$(dirname -- "$destination")"
+  partial="$destination.partial"
+  umask 077
+  rm -f -- "$partial"
+
+  info "Creating database backup..."
+  if ! compose exec -T database sh -ceu '
+    pg_dump --clean --if-exists --no-owner --no-privileges \
+      -U "$POSTGRES_USER" "$POSTGRES_DB"
+  ' | gzip -9 > "$partial"; then
+    rm -f -- "$partial"
+    die "Backup failed. The partial file was removed."
+  fi
+  [[ -s "$partial" ]] || { rm -f -- "$partial"; die "Backup file is empty."; }
+  mv -f -- "$partial" "$destination"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$destination" > "$destination.sha256"
+  fi
+  info "Backup ready: $destination"
+}
+
+restore() {
+  ensure_layout
+  require_command gzip
+  local source="${1:-}"
+  [[ -n "$source" ]] || die "Usage: $PROGRAM restore <backup.sql.gz>"
+  if [[ ! -f "$source" && -f "$BACKUP_DIR/$source" ]]; then
+    source="$BACKUP_DIR/$source"
+  fi
+  [[ -f "$source" ]] || die "Backup not found: $source"
+  gzip -t "$source" || die "Backup is not a valid gzip archive."
+  service_is_running database || die "Database is not running."
+
+  warn "Restore replaces current RepoNest database content."
+  printf 'Type RESTORE to continue: '
+  read -r confirmation
+  [[ "$confirmation" == "RESTORE" ]] || die "Restore cancelled."
+
+  backup "pre-restore-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+  info "Stopping Web and API while the database is restored..."
+  compose stop web api
+  info "Restoring database..."
+  if ! gzip -dc "$source" | compose exec -T database sh -ceu '
+      psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$POSTGRES_DB"
+    '; then
+    warn "Restore failed. Web and API remain stopped to avoid serving partial data."
+    die "Restore the pre-restore backup or inspect the PostgreSQL logs."
+  fi
+  start_services
+  health
+  info "Restore completed and verified."
+}
+
+update() {
+  ensure_layout
+  validate_config
+  local tag="${1:-}"
+  if [[ -n "$tag" ]]; then
+    [[ "$tag" =~ ^[A-Za-z0-9._-]+$ ]] || die "Invalid image tag: $tag"
+    set_env_value REPONEST_VERSION "$tag"
+    info "Pinned image tag to $tag."
+  fi
+  if service_is_running database; then backup; else warn "Database is not running; skipping pre-update backup."; fi
+  info "Pulling container images..."
+  compose pull
+  start_services
+  health
+  info "Update completed. Old images were kept for rollback."
+}
+
+migrate_volume() {
+  ensure_layout
+  require_command docker
+  local volume="${1:-$DEFAULT_OLD_VOLUME}" configured target
+  [[ "$volume" =~ ^[A-Za-z0-9_.-]+$ ]] || die "Invalid Docker volume name: $volume"
+  docker volume inspect "$volume" >/dev/null 2>&1 || die "Legacy volume not found: $volume"
+
+  configured="$(env_value REPONEST_DATA_DIR ./data/postgres)"
+  if [[ "$configured" = /* ]]; then target="$configured"; else target="$ROOT_DIR/${configured#./}"; fi
+  [[ -n "$target" && "$target" != "/" ]] || die "Unsafe data directory: $target"
+  mkdir -p "$target"
+  if find "$target" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+    die "Target data directory is not empty: $target"
+  fi
+
+  if service_is_running database; then backup; fi
+  info "Stopping the existing deployment..."
+  compose down
+  info "Copying $volume to $target..."
+  docker run --rm \
+    -v "$volume:/source:ro" \
+    -v "$target:/target" \
+    alpine:3.22 sh -ceu 'cp -a /source/. /target/; test -f /target/PG_VERSION'
+  info "Starting RepoNest with the bind-mounted data directory..."
+  start_services
+  health
+  info "Migration completed. The old volume was retained for rollback: $volume"
+}
+
+doctor() {
+  require_command docker
+  docker info >/dev/null 2>&1 || die "Docker daemon is unavailable or the current user lacks permission."
+  docker compose version
+  ensure_layout
+  validate_config
+  info "Deployment directory: $ROOT_DIR"
+  info "Data directory: $(env_value REPONEST_DATA_DIR ./data/postgres)"
+  df -h "$ROOT_DIR" | tail -n 1
+  if docker volume inspect "$DEFAULT_OLD_VOLUME" >/dev/null 2>&1; then
+    warn "Legacy volume still exists: $DEFAULT_OLD_VOLUME"
+  fi
+  compose ps
+  if service_is_running web && service_is_running api && service_is_running database; then health; fi
+}
+
+main() {
+  case "${1:-help}" in
+    help|-h|--help) usage; return ;;
+  esac
+  require_command docker
+  case "${1:-help}" in
+    start) start_services ;;
+    stop) ensure_layout; compose stop ;;
+    restart) ensure_layout; compose restart; compose up -d --wait --wait-timeout 180 ;;
+    status) ensure_layout; compose ps ;;
+    logs) ensure_layout; shift; compose logs --tail=200 -f "$@" ;;
+    health) health ;;
+    update) shift; update "${1:-}" ;;
+    backup) shift; backup "${1:-}" ;;
+    restore) shift; restore "${1:-}" ;;
+    migrate-volume) shift; migrate_volume "${1:-$DEFAULT_OLD_VOLUME}" ;;
+    doctor) doctor ;;
+    *) usage >&2; die "Unknown command: $1" ;;
+  esac
+}
+
+main "$@"

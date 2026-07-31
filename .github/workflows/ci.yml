@@ -38,6 +38,11 @@ jobs:
       - name: Type check
         run: npm run typecheck && npm run typecheck:api
 
+      - name: Validate deployment scripts
+        run: |
+          bash -n deploy/install.sh deploy/reponestctl
+          bash deploy/reponestctl help >/dev/null
+
       - name: Test web
         run: npm test
 

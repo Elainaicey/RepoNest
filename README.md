@@ -37,6 +37,7 @@ RepoNest 是一个面向开发者的综合性 GitHub 收藏管理器。它通过
 - 手动收藏 GitHub 仓库、完整 JSON 备份与增量数据库迁移
 - 基于 Radix 12 级色阶原则的语义色彩，搭配亚克力工具栏、微交互与尊重减弱动态偏好的环境粒子
 - Web / API 独立容器，支持 `linux/amd64` 与 `linux/arm64`
+- 可见的宿主机数据目录、数据库备份 / 恢复、旧卷迁移、健康诊断、日志轮转和一键升级工具
 
 ## 架构
 
@@ -49,7 +50,7 @@ Browser
                          └─ PostgreSQL 17
 ```
 
-Web 与 API 分别构建、发布和扩容；Caddy 提供同域 HTTPS 与路由，因此 OAuth Cookie 不需要跨域配置。
+Web 与 API 分别构建、发布和扩容；Caddy 提供同域 HTTPS 与路由，因此 OAuth Cookie 不需要跨域配置。标准自托管部署会运行 Web、API、PostgreSQL 三个单一职责容器，这属于有状态前后端分离项目的正常架构，不等于重复运行三份应用。
 
 ## Debian / Ubuntu 部署
 
@@ -66,20 +67,35 @@ Web 与 API 分别构建、发布和扩容；Caddy 提供同域 HTTPS 与路由�
 
 启用用户访问令牌过期，然后生成 Client secret。记下 GitHub App 的 Client ID 和 Client secret。
 
-### 2. 准备 Compose 配置
+### 2. 安装生产部署包
 
 ```bash
 sudo apt update
 sudo apt install -y ca-certificates curl openssl
 
-mkdir -p ~/reponest
-cd ~/reponest
-curl -fsSL https://raw.githubusercontent.com/Elainaicey/RepoNest/main/docker-compose.yml -o docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Elainaicey/RepoNest/main/.env.example -o .env
-chmod 600 .env
+curl -fsSL \
+  https://raw.githubusercontent.com/Elainaicey/RepoNest/main/deploy/install.sh \
+  -o /tmp/reponest-install.sh
+less /tmp/reponest-install.sh
+sudo sh /tmp/reponest-install.sh
+sudo nano /opt/reponest/.env
 ```
 
-编辑 `.env`：
+安装器会创建以下结构：
+
+```text
+/opt/reponest/
+├── docker-compose.yml
+├── .env
+├── reponestctl
+├── Caddyfile.example
+├── DEPLOYMENT.md
+├── data/postgres/          # PostgreSQL 持久数据
+├── backups/               # 压缩备份与校验文件
+└── systemd/               # 可选的每日备份定时器
+```
+
+在 `.env` 中填写：
 
 ```env
 REPONEST_VERSION=latest
@@ -95,6 +111,7 @@ TOKEN_ENCRYPTION_KEY=使用下方命令生成
 POSTGRES_USER=reponest
 POSTGRES_PASSWORD=使用长随机值
 POSTGRES_DB=reponest
+REPONEST_DATA_DIR=./data/postgres
 ```
 
 生成两个随机值：
@@ -106,15 +123,15 @@ openssl rand -hex 32
 
 第一个填入 `TOKEN_ENCRYPTION_KEY`，第二个填入 `POSTGRES_PASSWORD`。
 
-### 3. 启动
+### 3. 启动与检查
 
 ```bash
-docker compose pull
-docker compose up -d
-docker compose ps
+cd /opt/reponest
+sudo ./reponestctl start
+sudo ./reponestctl health
 ```
 
-Web 和 API 仅监听 `127.0.0.1`，数据库不暴露到宿主机。
+Web 和 API 仅监听 `127.0.0.1`，数据库仅连接内部 Docker 网络，不暴露到宿主机。容器日志启用了大小和数量轮转，避免长期运行占满磁盘。
 
 ### 4. Caddy 反向代理
 
@@ -142,14 +159,36 @@ sudo systemctl reload caddy
 ### 更新
 
 ```bash
-cd ~/reponest
-docker compose pull
-docker compose up -d
-docker image prune -f
+cd /opt/reponest
+sudo ./reponestctl update latest
 ```
 
-数据保存在 Docker volume `reponest_reponest-data` 中，更新容器不会删除它。
-API 启动时会按顺序执行尚未应用的 SQL migration；从旧版升级会自动补充标签、处理状态与评分字段，不需要重新部署数据库。
+更新工具会先创建 PostgreSQL 备份，再拉取镜像、运行增量迁移、等待健康状态并执行端到端检查；它不会自动删除旧镜像，便于回滚。
+
+常用运维命令：
+
+```bash
+sudo ./reponestctl status
+sudo ./reponestctl logs api
+sudo ./reponestctl backup
+sudo ./reponestctl doctor
+sudo ./reponestctl restore backups/reponest-YYYYMMDDTHHMMSSZ.sql.gz
+```
+
+### 从旧命名卷迁移
+
+旧版将数据库保存在 Docker 命名卷 `reponest_reponest-data`，宿主机通常位于 `/var/lib/docker/volumes/reponest_reponest-data/_data`。安装新版部署包后执行：
+
+```bash
+cd /opt/reponest
+sudo ./reponestctl migrate-volume
+sudo ./reponestctl update latest
+```
+
+迁移工具会在数据库运行时先做逻辑备份，然后停止容器、把旧卷完整复制到 `/opt/reponest/data/postgres`、验证 PostgreSQL 数据目录、重新启动并执行健康检查。旧卷不会被自动删除。
+
+> [!WARNING]
+> 已有部署必须先运行 `migrate-volume`，再使用新的绑定目录启动数据库；不要直接删除 `reponest_reponest-data`。
 
 ## 本地开发
 
@@ -215,6 +254,7 @@ RepoNest/
 │  ├─ migrations/             # PostgreSQL schema
 │  ├─ src/                    # OAuth、同步、会话与 REST API
 │  └─ tests/
+├─ deploy/                    # 安装器、reponestctl、Caddy 与部署指南
 ├─ Dockerfile                 # Web 镜像
 ├─ Dockerfile.api             # API 镜像
 └─ docker-compose.yml
