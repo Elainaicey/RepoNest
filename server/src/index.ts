@@ -6,6 +6,7 @@ import Fastify, {
   type FastifyRequest
 } from "fastify";
 import { z } from "zod";
+import { isGitHubLoginAllowed } from "./access.js";
 import { assertGitHubConfigured, config } from "./config.js";
 import { encrypt, pkceChallenge, randomToken, sha256 } from "./crypto.js";
 import { closeDatabase, migrate, pool } from "./db.js";
@@ -17,6 +18,11 @@ import {
   syncStars,
   tokenDates
 } from "./github.js";
+import {
+  createSyncCoordinator,
+  SyncInProgressError,
+  type SyncReason
+} from "./sync.js";
 
 const app = Fastify({
   logger: {
@@ -33,6 +39,7 @@ await app.register(helmet, {
 const sessionCookie = "reponest_session";
 const oauthStateCookie = "reponest_oauth_state";
 const oauthVerifierCookie = "reponest_oauth_verifier";
+const syncCoordinator = createSyncCoordinator(syncStars);
 
 const cookieOptions = {
   httpOnly: true,
@@ -40,6 +47,18 @@ const cookieOptions = {
   secure: config.secureCookies,
   path: "/"
 };
+
+function startSyncInBackground(
+  userId: string,
+  reason: Exclude<SyncReason, "manual">,
+  onError: (error: unknown) => void
+) {
+  try {
+    void syncCoordinator.start(userId, reason).catch(onError);
+  } catch (error) {
+    if (!(error instanceof SyncInProgressError)) onError(error);
+  }
+}
 
 type SessionUser = {
   id: string;
@@ -182,6 +201,15 @@ app.get("/api/auth/github/callback", async (request, reply) => {
     assertGitHubConfigured();
     const token = await exchangeCode(query.data.code, verifier);
     const profile = await getGitHubUser(token.access_token);
+    if (!isGitHubLoginAllowed(config.OWNER_GITHUB_LOGIN, profile.login)) {
+      request.log.warn(
+        { githubLogin: profile.login },
+        "Rejected GitHub login outside the configured owner boundary"
+      );
+      return reply.redirect(
+        new URL("/login?error=owner_restricted", config.PUBLIC_URL).toString()
+      );
+    }
     const dates = tokenDates(token);
     const userId = randomUUID();
     const result = await pool.query<{ id: string }>(
@@ -253,7 +281,7 @@ app.get("/api/auth/github/callback", async (request, reply) => {
       maxAge: config.SESSION_TTL_DAYS * 24 * 60 * 60
     });
 
-    void syncStars(resolvedUserId).catch((error) =>
+    startSyncInBackground(resolvedUserId, "initial", (error) =>
       request.log.error(error, "Initial GitHub sync failed")
     );
     return reply.redirect(new URL("/dashboard", config.PUBLIC_URL).toString());
@@ -298,6 +326,7 @@ app.get("/api/repositories", async (request, reply) => {
       scope: z
         .enum(["all", "stars", "bookmarks", "favorites", "archived"])
         .default("all"),
+      repository: z.string().uuid().optional(),
       collection: z.string().uuid().optional(),
       tag: z.string().uuid().optional(),
       language: z.string().max(80).optional(),
@@ -305,7 +334,9 @@ app.get("/api/repositories", async (request, reply) => {
       search: z.string().trim().max(120).optional(),
       sort: z
         .enum(["saved", "updated", "stars", "name", "rating"])
-        .default("saved")
+        .default("saved"),
+      limit: z.coerce.number().int().min(1).max(100).default(48),
+      offset: z.coerce.number().int().min(0).max(1_000_000).default(0)
     })
     .parse(request.query);
 
@@ -320,6 +351,10 @@ app.get("/api/repositories", async (request, reply) => {
   if (query.scope === "favorites") conditions.push("ur.favorite = true", "ur.archived = false");
   if (query.scope === "archived") conditions.push("ur.archived = true");
   if (query.scope === "all") conditions.push("ur.archived = false");
+  if (query.repository) {
+    values.push(query.repository);
+    conditions.push(`ur.repository_id = $${values.length}`);
+  }
   if (query.collection) {
     values.push(query.collection);
     conditions.push(`ur.collection_id = $${values.length}`);
@@ -332,10 +367,6 @@ app.get("/api/repositories", async (request, reply) => {
          AND filtered_tag.repository_id = ur.repository_id
          AND filtered_tag.tag_id = $${values.length}
     )`);
-  }
-  if (query.language) {
-    values.push(query.language);
-    conditions.push(`r.language = $${values.length}`);
   }
   if (query.status) {
     values.push(query.status);
@@ -357,6 +388,15 @@ app.get("/api/repositories", async (request, reply) => {
     )`);
   }
 
+  // Language facets intentionally ignore the active language so users can
+  // switch languages without first resetting the current filter.
+  const facetConditions = [...conditions];
+  const facetValues = [...values];
+  if (query.language) {
+    values.push(query.language);
+    conditions.push(`COALESCE(r.language, 'Other') = $${values.length}`);
+  }
+
   const orderBy = {
     saved: "COALESCE(ur.starred_at, ur.created_at) DESC",
     updated: "COALESCE(r.pushed_at, r.updated_at) DESC",
@@ -364,9 +404,13 @@ app.get("/api/repositories", async (request, reply) => {
     name: "r.full_name ASC",
     rating: "ur.rating DESC, COALESCE(ur.starred_at, ur.created_at) DESC"
   }[query.sort];
-  const result = await pool.query(
-    `SELECT r.id, r.github_id AS "githubId", r.owner, r.name,
-            r.full_name AS "fullName", r.description, r.url, r.homepage,
+  const pageValues = [...values, query.limit, query.offset];
+  const limitParameter = values.length + 1;
+  const offsetParameter = values.length + 2;
+  const [result, countResult, languageResult] = await Promise.all([
+    pool.query(
+      `SELECT r.id, r.github_id AS "githubId", r.owner, r.name,
+             r.full_name AS "fullName", r.description, r.url, r.homepage,
             r.language, r.stars, r.forks, r.open_issues AS "openIssues",
             r.license, r.topics, r.pushed_at AS "pushedAt",
             ur.collection_id AS "collectionId", c.name AS "collectionName",
@@ -390,10 +434,35 @@ app.get("/api/repositories", async (request, reply) => {
        ) tag_data ON true
       WHERE ${conditions.join(" AND ")}
       ORDER BY ${orderBy}
-      LIMIT 1000`,
-    values
-  );
-  return { repositories: result.rows };
+      LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
+      pageValues
+    ),
+    pool.query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total
+         FROM user_repositories ur
+         JOIN repositories r ON r.id = ur.repository_id
+        WHERE ${conditions.join(" AND ")}`,
+      values
+    ),
+    pool.query<{ name: string; count: number }>(
+      `SELECT COALESCE(r.language, 'Other') AS name, COUNT(*)::int AS count
+         FROM user_repositories ur
+         JOIN repositories r ON r.id = ur.repository_id
+        WHERE ${facetConditions.join(" AND ")}
+        GROUP BY COALESCE(r.language, 'Other')
+        ORDER BY count DESC, name ASC`,
+      facetValues
+    )
+  ]);
+  const total = countResult.rows[0]?.total ?? 0;
+  return {
+    repositories: result.rows,
+    total,
+    limit: query.limit,
+    offset: query.offset,
+    hasMore: query.offset + result.rows.length < total,
+    facets: { languages: languageResult.rows }
+  };
 });
 
 const repositoryChangesSchema = z.object({
@@ -404,8 +473,27 @@ const repositoryChangesSchema = z.object({
   rating: z.number().int().min(0).max(5).optional(),
   readStatus: readStatusSchema.optional(),
   tagIds: z.array(z.string().uuid()).max(30).optional(),
+  addTagIds: z.array(z.string().uuid()).min(1).max(30).optional(),
+  removeTagIds: z.array(z.string().uuid()).min(1).max(30).optional(),
   opened: z.boolean().optional()
 });
+
+type RepositoryChanges = z.infer<typeof repositoryChangesSchema>;
+
+function hasTagChanges(changes: RepositoryChanges) {
+  return (
+    changes.tagIds !== undefined ||
+    changes.addTagIds !== undefined ||
+    changes.removeTagIds !== undefined
+  );
+}
+
+function hasConflictingTagChanges(changes: RepositoryChanges) {
+  return (
+    changes.tagIds !== undefined &&
+    (changes.addTagIds !== undefined || changes.removeTagIds !== undefined)
+  );
+}
 
 async function validateCollection(userId: string, collectionId: string | null | undefined) {
   if (!collectionId) return true;
@@ -421,9 +509,18 @@ app.patch("/api/repositories/:id", async (request, reply) => {
   if (!user) return;
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const body = repositoryChangesSchema.parse(request.body);
+  if (hasConflictingTagChanges(body)) {
+    return reply.code(400).send({ error: "conflicting_tag_changes" });
+  }
   if (!(await validateCollection(user.id, body.collectionId))) {
     return reply.code(400).send({ error: "invalid_collection" });
   }
+  const existing = await pool.query(
+    `SELECT 1 FROM user_repositories
+      WHERE user_id = $1 AND repository_id = $2`,
+    [user.id, params.id]
+  );
+  if (!existing.rowCount) return reply.code(404).send({ error: "not_found" });
 
   const fields: string[] = [];
   const values: unknown[] = [user.id, params.id];
@@ -443,7 +540,7 @@ app.patch("/api/repositories/:id", async (request, reply) => {
     }
   }
   if (body.opened) fields.push("last_opened_at = now()");
-  if (!fields.length && body.tagIds === undefined) {
+  if (!fields.length && !hasTagChanges(body)) {
     return reply.code(400).send({ error: "no_changes" });
   }
 
@@ -477,6 +574,23 @@ app.patch("/api/repositories/:id", async (request, reply) => {
         );
       }
     }
+    if (body.addTagIds !== undefined) {
+      await client.query(
+        `INSERT INTO repository_tags (user_id, repository_id, tag_id)
+         SELECT $1, $2, id FROM tags
+          WHERE user_id = $1 AND id = ANY($3::uuid[])
+         ON CONFLICT DO NOTHING`,
+        [user.id, params.id, body.addTagIds]
+      );
+    }
+    if (body.removeTagIds !== undefined) {
+      await client.query(
+        `DELETE FROM repository_tags
+          WHERE user_id = $1 AND repository_id = $2
+            AND tag_id = ANY($3::uuid[])`,
+        [user.id, params.id, body.removeTagIds]
+      );
+    }
     await client.query("COMMIT");
     return { updated: true };
   } catch (error) {
@@ -496,6 +610,9 @@ app.post("/api/repositories/bulk", async (request, reply) => {
       changes: repositoryChangesSchema.omit({ opened: true })
     })
     .parse(request.body);
+  if (hasConflictingTagChanges(body.changes)) {
+    return reply.code(400).send({ error: "conflicting_tag_changes" });
+  }
   if (!(await validateCollection(user.id, body.changes.collectionId))) {
     return reply.code(400).send({ error: "invalid_collection" });
   }
@@ -516,7 +633,7 @@ app.post("/api/repositories/bulk", async (request, reply) => {
       fields.push(`${column} = $${values.length}`);
     }
   }
-  if (!fields.length && body.changes.tagIds === undefined) {
+  if (!fields.length && !hasTagChanges(body.changes)) {
     return reply.code(400).send({ error: "no_changes" });
   }
   const client = await pool.connect();
@@ -537,13 +654,39 @@ app.post("/api/repositories/bulk", async (request, reply) => {
       if (body.changes.tagIds.length) {
         await client.query(
           `INSERT INTO repository_tags (user_id, repository_id, tag_id)
-           SELECT $1, repository_id, tag_id
-             FROM unnest($2::uuid[]) AS repository_id
-             CROSS JOIN unnest($3::uuid[]) AS tag_id
-            WHERE EXISTS (SELECT 1 FROM tags WHERE id = tag_id AND user_id = $1)`,
+           SELECT $1, ur.repository_id, t.id
+             FROM user_repositories ur
+             CROSS JOIN tags t
+            WHERE ur.user_id = $1
+              AND ur.repository_id = ANY($2::uuid[])
+              AND t.user_id = $1
+              AND t.id = ANY($3::uuid[])`,
           [user.id, body.ids, body.changes.tagIds]
         );
       }
+    }
+    if (body.changes.addTagIds !== undefined) {
+      await client.query(
+        `INSERT INTO repository_tags (user_id, repository_id, tag_id)
+         SELECT $1, ur.repository_id, t.id
+           FROM user_repositories ur
+           CROSS JOIN tags t
+          WHERE ur.user_id = $1
+            AND ur.repository_id = ANY($2::uuid[])
+            AND t.user_id = $1
+            AND t.id = ANY($3::uuid[])
+         ON CONFLICT DO NOTHING`,
+        [user.id, body.ids, body.changes.addTagIds]
+      );
+    }
+    if (body.changes.removeTagIds !== undefined) {
+      await client.query(
+        `DELETE FROM repository_tags
+          WHERE user_id = $1
+            AND repository_id = ANY($2::uuid[])
+            AND tag_id = ANY($3::uuid[])`,
+        [user.id, body.ids, body.changes.removeTagIds]
+      );
     }
     await client.query("COMMIT");
     return { updated: body.ids.length };
@@ -778,10 +921,29 @@ app.get("/api/insights", async (request, reply) => {
   return { summary: summary.rows[0], languages: languages.rows, statuses: statuses.rows, tags: tags.rows };
 });
 
+app.get("/api/sync/status", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  return {
+    ...syncCoordinator.getStatus(user.id),
+    lastSyncedAt: user.last_synced_at
+  };
+});
+
 app.post("/api/sync", async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
-  return syncStars(user.id);
+  try {
+    return await syncCoordinator.start(user.id, "manual");
+  } catch (error) {
+    if (error instanceof SyncInProgressError) {
+      return reply.code(409).send({
+        error: "sync_in_progress",
+        status: syncCoordinator.getStatus(user.id)
+      });
+    }
+    throw error;
+  }
 });
 
 app.get("/api/backup", async (request, reply) => {
@@ -842,7 +1004,6 @@ app.setErrorHandler((error, request, reply) => {
 await migrate();
 await pool.query("DELETE FROM sessions WHERE expires_at <= now()");
 
-const syncing = new Set<string>();
 async function scheduledSync() {
   const users = await pool.query<{ id: string }>(
     `SELECT id FROM users
@@ -851,11 +1012,9 @@ async function scheduledSync() {
     [config.SYNC_INTERVAL_MINUTES]
   );
   for (const user of users.rows) {
-    if (syncing.has(user.id)) continue;
-    syncing.add(user.id);
-    syncStars(user.id)
-      .catch((error) => app.log.error(error, `Scheduled sync failed for ${user.id}`))
-      .finally(() => syncing.delete(user.id));
+    startSyncInBackground(user.id, "scheduled", (error) =>
+      app.log.error(error, `Scheduled sync failed for ${user.id}`)
+    );
   }
 }
 

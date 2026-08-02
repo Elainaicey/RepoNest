@@ -11,9 +11,15 @@ const ThemeContext = createContext<{
   toggleTheme: () => void;
 } | null>(null);
 
-type Notice = { id: number; title: string; description?: string };
+export type NoticeVariant = "success" | "error" | "info";
+type Notice = {
+  id: number;
+  title: string;
+  description?: string;
+  variant: NoticeVariant;
+};
 const ToastContext = createContext<{
-  notify: (title: string, description?: string) => void;
+  notify: (title: string, description?: string, variant?: NoticeVariant) => void;
 } | null>(null);
 
 export default function Providers({ children }: { children: React.ReactNode }) {
@@ -32,10 +38,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   );
   const [theme, setTheme] = useState<Theme>("light");
   const [notices, setNotices] = useState<Notice[]>([]);
-  const notify = useCallback((title: string, description?: string) => {
+  const notify = useCallback((
+    title: string,
+    description?: string,
+    variant: NoticeVariant = "success"
+  ) => {
     setNotices((current) => [
       ...current.slice(-2),
-      { id: Date.now() + Math.random(), title, description }
+      { id: Date.now() + Math.random(), title, description, variant }
     ]);
   }, []);
 
@@ -75,6 +85,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             {notices.map((notice) => (
               <Toast.Root
                 className="toast-root"
+                data-variant={notice.variant}
                 key={notice.id}
                 onOpenChange={(open) => {
                   if (!open) {

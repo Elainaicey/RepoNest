@@ -4,6 +4,8 @@ import Providers from "./providers";
 import "./globals.css";
 import "./v2.css";
 
+const themeBootstrap = `(()=>{try{const stored=localStorage.getItem("reponest.theme");const theme=stored||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme}catch{}})()`;
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"]
@@ -50,6 +52,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <Providers>{children}</Providers>
       </body>

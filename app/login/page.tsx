@@ -9,7 +9,8 @@ import { Brand } from "@/components/brand";
 
 const errors: Record<string, string> = {
   oauth_state: "登录请求已过期，请重新尝试。",
-  oauth_callback: "GitHub 授权没有完成，请检查应用配置后重试。"
+  oauth_callback: "GitHub 授权没有完成，请检查应用配置后重试。",
+  owner_restricted: "这个 GitHub 账号不在此实例的允许范围内。请使用实例所有者账号登录。"
 };
 
 export default async function LoginPage({
@@ -38,7 +39,7 @@ export default async function LoginPage({
           RepoNest 会读取并定时同步你的星标。令牌只保存在你部署的服务器中，并使用 AES-256-GCM 加密。
         </p>
         {error && (
-          <div className="auth-error">
+          <div className="auth-error" role="alert">
             {errors[error] ?? "登录失败，请稍后重试。"}
           </div>
         )}

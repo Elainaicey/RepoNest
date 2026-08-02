@@ -1,8 +1,17 @@
 "use client";
 
-import { ExternalLink, Heart, Star, X } from "lucide-react";
-import { Dialog } from "radix-ui";
-import { useState } from "react";
+import {
+  CircleAlert,
+  ExternalLink,
+  Globe2,
+  Heart,
+  MessageSquareText,
+  Star,
+  Trash2,
+  X
+} from "lucide-react";
+import { AlertDialog, Dialog } from "radix-ui";
+import { useMemo, useState } from "react";
 import type { Collection, ReadStatus, Repository, Tag } from "@/lib/types";
 
 type RepositoryChanges = {
@@ -12,7 +21,6 @@ type RepositoryChanges = {
   rating: number;
   readStatus: ReadStatus;
   tagIds: string[];
-  opened: boolean;
 };
 
 const statusOptions: Array<{ value: ReadStatus; label: string; hint: string }> = [
@@ -28,7 +36,11 @@ export function RepositoryDrawer({
   open,
   onOpenChange,
   onSave,
-  saving = false
+  onVisit,
+  onDelete,
+  saving = false,
+  deleting = false,
+  saveError = false
 }: {
   repository: Repository;
   collections: Collection[];
@@ -36,7 +48,11 @@ export function RepositoryDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (changes: RepositoryChanges) => void;
+  onVisit?: () => void;
+  onDelete?: () => void;
   saving?: boolean;
+  deleting?: boolean;
+  saveError?: boolean;
 }) {
   const [note, setNote] = useState(repository.note ?? "");
   const [collectionId, setCollectionId] = useState(repository.collectionId ?? "");
@@ -44,12 +60,49 @@ export function RepositoryDrawer({
   const [readStatus, setReadStatus] = useState<ReadStatus>(repository.readStatus);
   const [tagIds, setTagIds] = useState(repository.tags.map((tag) => tag.id));
   const [favorite, setFavorite] = useState(repository.favorite);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+  const initialTagKey = useMemo(() => repository.tags.map((tag) => tag.id).sort().join(","), [repository.tags]);
+  const dirty =
+    note !== (repository.note ?? "") ||
+    collectionId !== (repository.collectionId ?? "") ||
+    rating !== repository.rating ||
+    readStatus !== repository.readStatus ||
+    tagIds.slice().sort().join(",") !== initialTagKey ||
+    favorite !== repository.favorite;
+
+  const requestClose = () => {
+    if (saving || deleting) return;
+    if (dirty) setDiscardOpen(true);
+    else onOpenChange(false);
+  };
+  const submit = () => {
+    if (!dirty || saving) return;
+    onSave({
+      favorite,
+      note: note.trim() || null,
+      collectionId: collectionId || null,
+      rating,
+      readStatus,
+      tagIds
+    });
+  };
+
+  return <>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) requestClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content className="repo-drawer" aria-describedby="repository-description">
+        <Dialog.Content
+          className="repo-drawer"
+          aria-describedby="repository-description"
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              submit();
+            }
+          }}
+        >
           <header className="drawer-header">
             <div className="drawer-repo-title">
               <span className="repo-avatar large">{repository.owner.slice(0, 2).toUpperCase()}</span>
@@ -60,21 +113,24 @@ export function RepositoryDrawer({
                 </Dialog.Description>
               </div>
             </div>
-            <Dialog.Close asChild>
-              <button className="icon-button" aria-label="关闭详情"><X size={18} /></button>
-            </Dialog.Close>
+            <button className="icon-button" aria-label="关闭详情" onClick={requestClose}><X size={19} /></button>
           </header>
 
           <div className="drawer-meta-strip">
-            <span><Star size={15} /> {repository.stars.toLocaleString()}</span>
+            <span><Star size={16} /> {repository.stars.toLocaleString()}</span>
             {repository.language && <span><i className="language-dot" /> {repository.language}</span>}
             {repository.license && <span>{repository.license}</span>}
-            <a href={repository.url} target="_blank" rel="noreferrer">
-              GitHub <ExternalLink size={14} />
+            <span>{repository.openIssues.toLocaleString()} issues</span>
+            <a href={repository.url} target="_blank" rel="noreferrer" onClick={onVisit}>
+              GitHub <ExternalLink size={15} />
             </a>
           </div>
 
           <div className="drawer-form">
+            {repository.topics.length > 0 && <section className="drawer-topics" aria-label="GitHub topics">
+              {repository.topics.slice(0, 8).map((topic) => <span key={topic}>#{topic}</span>)}
+            </section>}
+
             <section className="form-section">
               <div className="field-heading">
                 <div><strong>处理状态</strong><span>让收藏拥有下一步，而不只是堆积。</span></div>
@@ -87,6 +143,7 @@ export function RepositoryDrawer({
                     key={option.value}
                     onClick={() => setReadStatus(option.value)}
                     type="button"
+                    aria-pressed={readStatus === option.value}
                   >
                     <strong>{option.label}</strong><span>{option.hint}</span>
                   </button>
@@ -114,8 +171,9 @@ export function RepositoryDrawer({
                       onClick={() => setRating(rating === value ? 0 : value)}
                       type="button"
                       aria-label={`${value} 星`}
+                      aria-pressed={value <= rating}
                     >
-                      <Star size={18} fill={value <= rating ? "currentColor" : "none"} />
+                      <Star size={19} fill={value <= rating ? "currentColor" : "none"} />
                     </button>
                   ))}
                 </div>
@@ -151,44 +209,46 @@ export function RepositoryDrawer({
                   onChange={(event) => setNote(event.target.value)}
                   placeholder="为什么收藏它？准备把它用在哪里？"
                   maxLength={4000}
-                  rows={5}
+                  rows={6}
                 />
                 <small>{note.length} / 4000</small>
               </label>
             </section>
+
+            {saveError && <p className="drawer-inline-error" role="alert"><CircleAlert size={16} />保存没有完成。草稿仍在这里，请检查网络后重试。</p>}
           </div>
 
           <footer className="drawer-footer">
-            <button
-              className={favorite ? "button favorite-toggle selected" : "button favorite-toggle"}
-              onClick={() => setFavorite((current) => !current)}
-              type="button"
-            >
-              <Heart size={16} fill={favorite ? "currentColor" : "none"} />
-              {favorite ? "已特别关注" : "特别关注"}
-            </button>
-            <div>
-              <Dialog.Close asChild><button className="button ghost">取消</button></Dialog.Close>
+            <div className="drawer-footer-secondary">
               <button
-                className="button primary"
-                disabled={saving}
-                onClick={() => onSave({
-                  favorite,
-                  note: note.trim() || null,
-                  collectionId: collectionId || null,
-                  rating,
-                  readStatus,
-                  tagIds,
-                  opened: true
-                })}
+                className={favorite ? "button favorite-toggle selected" : "button favorite-toggle"}
+                onClick={() => setFavorite((current) => !current)}
                 type="button"
+                aria-pressed={favorite}
               >
-                {saving ? "保存中…" : "保存整理信息"}
+                <Heart size={17} fill={favorite ? "currentColor" : "none"} />
+                {favorite ? "已特别关注" : "特别关注"}
+              </button>
+              {repository.homepage && <a className="button ghost" href={repository.homepage} target="_blank" rel="noreferrer"><Globe2 size={16} />主页</a>}
+              {onDelete && <button className="button danger-quiet drawer-delete" type="button" onClick={() => setDeleteOpen(true)}><Trash2 size={16} />移除</button>}
+            </div>
+            <div>
+              <button className="button ghost" type="button" onClick={requestClose}>取消</button>
+              <button className="button primary" disabled={saving || !dirty} onClick={submit} type="button">
+                <MessageSquareText size={16} />{saving ? "保存中…" : dirty ? "保存整理信息" : "已保存"}
               </button>
             </div>
           </footer>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  );
+
+    <AlertDialog.Root open={discardOpen} onOpenChange={setDiscardOpen}>
+      <AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay nested-overlay" /><AlertDialog.Content className="dialog-card alert-card"><AlertDialog.Title>放弃尚未保存的修改？</AlertDialog.Title><AlertDialog.Description>状态、标签、评分或笔记的本次修改将不会保存。</AlertDialog.Description><div className="dialog-actions"><AlertDialog.Cancel asChild><button className="button secondary">继续编辑</button></AlertDialog.Cancel><AlertDialog.Action asChild><button className="button danger" onClick={() => onOpenChange(false)}>放弃修改</button></AlertDialog.Action></div></AlertDialog.Content></AlertDialog.Portal>
+    </AlertDialog.Root>
+
+    <AlertDialog.Root open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay nested-overlay" /><AlertDialog.Content className="dialog-card alert-card"><AlertDialog.Title>从资料库移除“{repository.fullName}”？</AlertDialog.Title><AlertDialog.Description>RepoNest 会隐藏这条收藏以及它的个人整理信息。手动重新添加时可以恢复项目。</AlertDialog.Description><div className="dialog-actions"><AlertDialog.Cancel asChild><button className="button secondary">取消</button></AlertDialog.Cancel><AlertDialog.Action asChild><button className="button danger" disabled={deleting} onClick={onDelete}>{deleting ? "移除中…" : "确认移除"}</button></AlertDialog.Action></div></AlertDialog.Content></AlertDialog.Portal>
+    </AlertDialog.Root>
+  </>;
 }

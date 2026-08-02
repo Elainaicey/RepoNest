@@ -46,6 +46,12 @@ type StarredRepository = {
   repo: GitHubRepository;
 };
 
+export type SyncResult = {
+  count: number;
+  syncedAt: string;
+  truncated: boolean;
+};
+
 function headers(token: string, accept = "application/vnd.github+json") {
   return {
     Accept: accept,
@@ -231,6 +237,7 @@ async function upsertRepository(
 export async function syncStars(userId: string) {
   const token = await accessTokenForUser(userId);
   const starred: StarredRepository[] = [];
+  let truncated = true;
 
   for (let page = 1; page <= config.MAX_SYNC_PAGES; page += 1) {
     const batch = await githubFetch<StarredRepository[]>(
@@ -239,18 +246,25 @@ export async function syncStars(userId: string) {
       "application/vnd.github.star+json"
     );
     starred.push(...batch);
-    if (batch.length < 100) break;
+    if (batch.length < 100) {
+      truncated = false;
+      break;
+    }
   }
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query(
-      `UPDATE user_repositories
-          SET starred = false, updated_at = now()
-        WHERE user_id = $1 AND starred = true`,
-      [userId]
-    );
+    // Never infer removals from an incomplete GitHub result. This protects
+    // users with more stars than MAX_SYNC_PAGES can retrieve in one run.
+    if (!truncated) {
+      await client.query(
+        `UPDATE user_repositories
+            SET starred = false, updated_at = now()
+          WHERE user_id = $1 AND starred = true`,
+        [userId]
+      );
+    }
 
     for (const item of starred) {
       const repositoryId = await upsertRepository(client, item.repo);
@@ -261,7 +275,6 @@ export async function syncStars(userId: string) {
          ON CONFLICT (user_id, repository_id) DO UPDATE SET
            starred = true,
            starred_at = EXCLUDED.starred_at,
-           hidden = false,
            updated_at = now()`,
         [userId, repositoryId, item.starred_at]
       );
@@ -279,7 +292,11 @@ export async function syncStars(userId: string) {
     client.release();
   }
 
-  return { count: starred.length, syncedAt: new Date().toISOString() };
+  return {
+    count: starred.length,
+    syncedAt: new Date().toISOString(),
+    truncated
+  } satisfies SyncResult;
 }
 
 export async function fetchRepository(

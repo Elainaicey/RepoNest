@@ -14,11 +14,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/app/providers";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { demoRepositories, demoTags } from "@/lib/demo-data";
 import { relativeTime } from "@/lib/format";
 import type { Insights, Repository, User } from "@/lib/types";
 import { PageHeader } from "./page-header";
+import { QueryErrorState } from "./query-error-state";
 import { RepositoryCard } from "./repository-card";
 
 const demoInsights: Insights = {
@@ -35,17 +36,69 @@ export function DashboardView({ demo = false }: { demo?: boolean }) {
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<User>("/api/me"), enabled: !demo });
   const insightQuery = useQuery({ queryKey: ["insights"], queryFn: () => api<Insights>("/api/insights"), enabled: !demo });
   const sync = useMutation({
-    mutationFn: () => api<{ count: number; syncedAt: string }>("/api/sync", { method: "POST" }),
+    mutationFn: () => api<{ count: number; syncedAt: string; truncated: boolean }>("/api/sync", { method: "POST" }),
     onSuccess: async (result) => {
       await Promise.all([queryClient.invalidateQueries({ queryKey: ["repositories"] }), queryClient.invalidateQueries({ queryKey: ["me"] }), queryClient.invalidateQueries({ queryKey: ["insights"] })]);
-      notify("同步完成", `已核对 ${result.count} 个 GitHub 星标。`);
+      notify(result.truncated ? "同步已达到上限" : "同步完成", `已核对 ${result.count} 个 GitHub 星标。`, result.truncated ? "info" : "success");
     },
-    onError: () => notify("同步失败", "GitHub 暂时不可用，请稍后重试。")
+    onError: (error) => notify(
+      error instanceof ApiError && error.status === 409 ? "同步已经在进行" : "同步失败",
+      error instanceof ApiError && error.status === 409 ? "无需重复启动，请稍候查看结果。" : "GitHub 暂时不可用，请稍后重试。",
+      error instanceof ApiError && error.status === 409 ? "info" : "error"
+    )
   });
   const update = useMutation({
     mutationFn: ({ id, changes }: { id: string; changes: { favorite?: boolean; archived?: boolean } }) => api(`/api/repositories/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["repositories"] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["repositories"] }),
+    onError: () => notify("更新失败", "没有修改这个项目，请稍后重试。", "error")
   });
+
+  const loading = !demo && (repositoryQuery.isPending || me.isPending || insightQuery.isPending);
+  const failed = !demo && (repositoryQuery.isError || me.isError || insightQuery.isError);
+
+  if (failed) {
+    return (
+      <div className="page-stack dashboard-page">
+        <PageHeader
+          eyebrow="OVERVIEW"
+          title="暂时无法打开概览"
+          description="你的收藏和整理信息仍安全保存在服务器上。"
+        />
+        <QueryErrorState
+          description="概览数据没有完整返回。可以重新请求资料库、账户和洞察数据。"
+          onRetry={() => Promise.all([
+            repositoryQuery.refetch(),
+            me.refetch(),
+            insightQuery.refetch()
+          ])}
+          retrying={repositoryQuery.isFetching || me.isFetching || insightQuery.isFetching}
+        />
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="page-stack dashboard-page" aria-busy="true">
+        <PageHeader
+          eyebrow="OVERVIEW"
+          title="正在准备你的资料库"
+          description="正在汇总收藏、处理进度和最近同步状态。"
+        />
+        <section className="stats-grid" aria-label="正在加载资料库统计">
+          {[0, 1, 2, 3].map((item) => (
+            <article className="stat-card skeleton-card" key={item} style={{ minHeight: 108 }} />
+          ))}
+        </section>
+        <div className="dashboard-bento" aria-hidden="true">
+          <section className="workflow-card skeleton-card" />
+          <section className="rediscover-card skeleton-card" />
+          <section className="dashboard-tags-card skeleton-card" />
+        </div>
+        <span className="sr-only">正在加载概览</span>
+      </div>
+    );
+  }
 
   const repositories = demo ? demoRepositories : repositoryQuery.data?.repositories ?? [];
   const insights = demo ? demoInsights : insightQuery.data;
@@ -57,6 +110,36 @@ export function DashboardView({ demo = false }: { demo?: boolean }) {
   ];
   const statusCount = (name: string) => insights?.statuses.find((item) => item.name === name)?.count ?? 0;
   const spotlight = repositories.find((item) => item.rating >= 4 && item.note) ?? repositories[0];
+
+  if (!repositories.length) {
+    return (
+      <div className="page-stack dashboard-page">
+        <PageHeader
+          eyebrow="OVERVIEW"
+          title={`欢迎回来，${me.data?.name?.split(" ")[0] || me.data?.login || "开发者"}`}
+          description="资料库已经准备好。先同步 GitHub 星标，或手动收下第一个仓库。"
+          actions={(
+            <button className="button secondary" onClick={() => sync.mutate()} disabled={sync.isPending}>
+              <RefreshCw className={sync.isPending ? "spinning" : ""} size={17} />
+              {sync.isPending ? "正在同步…" : "同步 GitHub"}
+            </button>
+          )}
+        />
+        <div className="empty-state">
+          <span className="empty-icon"><Github size={22} /></span>
+          <h2>建立你的第一份收藏索引</h2>
+          <p>同步现有 GitHub Star，随后就能用收藏集、标签、状态、评分和笔记持续整理。</p>
+          <div className="page-actions">
+            <button className="button primary" onClick={() => sync.mutate()} disabled={sync.isPending}>
+              <RefreshCw className={sync.isPending ? "spinning" : ""} size={16} />
+              {sync.isPending ? "正在同步…" : "立即同步"}
+            </button>
+            <Link className="button secondary" href="/library">手动添加仓库</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-stack dashboard-page">
@@ -75,9 +158,9 @@ export function DashboardView({ demo = false }: { demo?: boolean }) {
         <section className="workflow-card">
           <header><div><p className="eyebrow">COLLECTION FLOW</p><h2>收藏处理进度</h2></div><Link href={demo ? "/login" : "/insights"}>查看洞察 <ArrowRight size={14} /></Link></header>
           <div className="workflow-lanes">
-            <Link href={demo ? "/login" : "/library"}><span data-status="inbox"><Bookmark size={17} /></span><div><strong>待整理</strong><small>刚收藏，等待归类</small></div><b>{statusCount("inbox")}</b></Link>
-            <Link href={demo ? "/login" : "/library"}><span data-status="exploring"><Sparkles size={17} /></span><div><strong>探索中</strong><small>正在阅读与评估</small></div><b>{statusCount("exploring")}</b></Link>
-            <Link href={demo ? "/login" : "/library"}><span data-status="adopted"><CheckCircle2 size={17} /></span><div><strong>已采用</strong><small>已经进入工作流</small></div><b>{statusCount("adopted")}</b></Link>
+            <Link href={demo ? "/login" : "/library?status=inbox"}><span data-status="inbox"><Bookmark size={17} /></span><div><strong>待整理</strong><small>刚收藏，等待归类</small></div><b>{statusCount("inbox")}</b></Link>
+            <Link href={demo ? "/login" : "/library?status=exploring"}><span data-status="exploring"><Sparkles size={17} /></span><div><strong>探索中</strong><small>正在阅读与评估</small></div><b>{statusCount("exploring")}</b></Link>
+            <Link href={demo ? "/login" : "/library?status=adopted"}><span data-status="adopted"><CheckCircle2 size={17} /></span><div><strong>已采用</strong><small>已经进入工作流</small></div><b>{statusCount("adopted")}</b></Link>
           </div>
         </section>
 
@@ -97,7 +180,15 @@ export function DashboardView({ demo = false }: { demo?: boolean }) {
       <section className="section-stack" id="library">
         <div className="section-heading"><div><p className="eyebrow">RECENTLY SAVED</p><h2>最近收下的项目</h2></div><Link href={demo ? "/login" : "/library"}>打开资料库 <ArrowRight size={15} /></Link></div>
         <div className="repo-grid dashboard-repo-grid">
-          {repositories.slice(0, 6).map((repository) => <RepositoryCard demo={demo} repository={repository} key={repository.id} onUpdate={(changes) => update.mutate({ id: repository.id, changes })} />)}
+          {repositories.slice(0, 6).map((repository) => (
+            <RepositoryCard
+              demo={demo}
+              href={demo ? "/login" : `/library?repository=${encodeURIComponent(repository.id)}`}
+              repository={repository}
+              key={repository.id}
+              onUpdate={demo ? undefined : (changes) => update.mutate({ id: repository.id, changes })}
+            />
+          ))}
         </div>
       </section>
     </div>

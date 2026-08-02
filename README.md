@@ -24,15 +24,16 @@ RepoNest 是一个面向开发者的综合性 GitHub 收藏管理器。它通过
 ## 功能
 
 - GitHub App OAuth 登录，支持 PKCE、state 校验和 HttpOnly 会话 Cookie
-- 登录后立即同步 GitHub 星标，并按计划自动增量同步
+- 登录后立即同步 GitHub 星标，定时全量核对并提供互斥、状态反馈与截断保护
 - GitHub 短期令牌自动刷新；访问令牌使用 AES-256-GCM 加密保存
 - 收藏集与多标签组织，支持待整理、探索中、已采用三种处理状态
 - 特别关注、归档、五星评分、私人笔记和最近打开记录
-- 名称、简介、笔记和标签搜索，支持组合筛选、排序与卡片/列表视图
-- 批量移动收藏集、修改状态、特别关注、归档和标签调整
+- 全局仓库搜索与 URL 化资料库筛选，支持分享、返回、排序及卡片/列表视图
+- 分页加载、真实总数与独立语言筛选，数千条 Star 也不会一次性渲染
+- 批量移动收藏集、修改状态、特别关注、归档和安全的增量标签调整
 - 语言、状态与标签洞察，帮助发现收藏结构和待整理积压
 - 手动收藏 GitHub 仓库和完整 JSON 数据导出
-- 响应式多路由界面、命令面板、明暗主题、无障碍交互与 Radix 色阶系统
+- 响应式多路由界面、移动端完整导航、命令面板、明暗主题与 Radix 色阶系统
 - 单镜像、单容器、单端口部署，支持 `linux/amd64` 与 `linux/arm64`
 - 宿主机可见数据目录、离线一致性备份、恢复回滚、健康诊断和日志轮转
 
@@ -112,7 +113,12 @@ PUBLIC_URL=https://reponest.ushio.cc
 GITHUB_CLIENT_ID=你的_Client_ID
 GITHUB_CLIENT_SECRET=你的_Client_secret
 TOKEN_ENCRYPTION_KEY=使用下方命令生成
+OWNER_GITHUB_LOGIN=你的_GitHub_用户名
 ```
+
+`OWNER_GITHUB_LOGIN` 对个人公开实例强烈推荐。设置后，只有该 GitHub
+账户能够通过 OAuth 进入 RepoNest；用户名匹配不区分大小写。不设置时，
+任何能够授权该 GitHub App 的用户都可以创建自己的隔离空间。
 
 生成令牌加密密钥：
 
@@ -237,6 +243,7 @@ RepoNest/
 - GitHub Client secret 和 `TOKEN_ENCRYPTION_KEY` 只能保存在 `.env`，不要提交到 Git。
 - `TOKEN_ENCRYPTION_KEY` 丢失后，数据库中的 GitHub 令牌无法解密，请单独安全备份。
 - OAuth 令牌不会发送到浏览器；数据库保存加密令牌，会话表只保存 Cookie 哈希。
+- 个人实例建议设置 `OWNER_GITHUB_LOGIN`，在应用层限制可登录的 GitHub 账户。
 - Compose 只监听 `127.0.0.1`，生产环境必须通过 HTTPS 反向代理访问。
 - 漏洞报告方式见 [SECURITY.md](./SECURITY.md)。
 

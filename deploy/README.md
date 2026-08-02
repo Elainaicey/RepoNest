@@ -19,6 +19,10 @@ RepoNest ships as one image and one Compose service. The Web application, API, O
 
 Only `data/database` is required to preserve the application state. Container images remain managed by Docker, while logs use Docker's configured size and file-count limits.
 
+For a personal internet-facing instance, set `OWNER_GITHUB_LOGIN` in `.env` to
+the only GitHub account allowed to enter RepoNest. Leave it unset only when the
+instance is intentionally shared with everyone who can authorize the GitHub App.
+
 ## Start and inspect
 
 ```bash
