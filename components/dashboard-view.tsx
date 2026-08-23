@@ -3,14 +3,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
+  ArrowUpRight,
   Bookmark,
   CheckCircle2,
   CircleDot,
   GitBranch as Github,
   Heart,
+  Library,
   RefreshCw,
   Sparkles,
-  Tags
+  Tags,
+  TrendingUp
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/app/providers";
@@ -21,6 +24,7 @@ import type { Insights, Repository, User } from "@/lib/types";
 import { PageHeader } from "./page-header";
 import { QueryErrorState } from "./query-error-state";
 import { RepositoryCard } from "./repository-card";
+import { InteractiveSurface } from "./interactive-surface";
 
 const demoInsights: Insights = {
   summary: { total: 36, stars: 32, favorites: 6, notes: 14, inbox: 8 },
@@ -143,19 +147,33 @@ export function DashboardView({ demo = false }: { demo?: boolean }) {
 
   return (
     <div className="page-stack dashboard-page">
-      <PageHeader
-        eyebrow="OVERVIEW"
-        title={demo ? "一个更有秩序的收藏空间" : `欢迎回来，${me.data?.name?.split(" ")[0] || me.data?.login || "开发者"}`}
-        description={demo ? "这是一份只读演示。真实空间会自动同步 GitHub，并保留全部个人整理。" : `上次同步${relativeTime(me.data?.lastSyncedAt ?? null)}。从待整理清单继续，或者重新发现一项旧收藏。`}
-        actions={demo ? <Link className="button primary" href="/login"><Github size={17} />连接 GitHub</Link> : <button className="button secondary" onClick={() => sync.mutate()} disabled={sync.isPending}><RefreshCw className={sync.isPending ? "spinning" : ""} size={17} />{sync.isPending ? "正在同步…" : "同步 GitHub"}</button>}
-      />
+      <section className="dashboard-hero liquid-card">
+        <div className="dashboard-hero-copy">
+          <p className="eyebrow"><span aria-hidden="true" />YOUR LIBRARY, IN FOCUS</p>
+          <h1>{demo ? "一个更有秩序的收藏空间" : <>欢迎回来，<span>{me.data?.name?.split(" ")[0] || me.data?.login || "开发者"}</span></>}</h1>
+          <p>{demo ? "这是一份只读演示。真实空间会自动同步 GitHub，并保留全部个人整理。" : `上次同步${relativeTime(me.data?.lastSyncedAt ?? null)}。从待整理清单继续，或者重新发现一项旧收藏。`}</p>
+          <div className="dashboard-hero-actions">
+            {demo ? <Link className="button primary" href="/login"><Github size={17} />连接 GitHub</Link> : <button className="button primary" onClick={() => sync.mutate()} disabled={sync.isPending}><RefreshCw className={sync.isPending ? "spinning" : ""} size={17} />{sync.isPending ? "正在同步…" : "同步 GitHub"}</button>}
+            <Link className="button secondary" href={demo ? "/login" : "/library?status=inbox"}><CircleDot size={16} />整理收件箱</Link>
+          </div>
+          <div className="dashboard-hero-meta"><span><i data-tone="jade" />同步状态正常</span><span><i data-tone="violet" />{insights?.summary.total ?? repositories.length} 项收藏可检索</span></div>
+        </div>
+        <div className="dashboard-hero-visual" aria-hidden="true">
+          <div className="hero-orbit orbit-outer" /><div className="hero-orbit orbit-inner" />
+          <span className="hero-visual-core"><Library size={25} /></span>
+          <span className="hero-visual-node node-one"><Heart size={15} /></span>
+          <span className="hero-visual-node node-two"><Tags size={15} /></span>
+          <span className="hero-visual-node node-three"><Sparkles size={15} /></span>
+          <div className="hero-visual-stat"><TrendingUp size={14} /><span><strong>{statusCount("adopted")}</strong><small>已转化为工具</small></span></div>
+        </div>
+      </section>
 
       <section className="stats-grid" aria-label="资料库统计">
-        {stats.map(({ label, value, icon: Icon, color, detail }) => <article className="stat-card" key={label}><span className="stat-icon" data-color={color}><Icon size={18} /></span><div><strong>{value}</strong><span>{label}</span><small>{detail}</small></div><i /></article>)}
+        {stats.map(({ label, value, icon: Icon, color, detail }, index) => <InteractiveSurface className="stat-card liquid-card" data-tone={color} key={label} maxTilt={2.2} lift={3}><div className="stat-card-top"><span className="stat-icon" data-color={color}><Icon size={17} /></span><small>0{index + 1}</small></div><div className="stat-card-value"><strong>{value}</strong><span>{label}</span></div><p>{detail}</p><i /></InteractiveSurface>)}
       </section>
 
       <div className="dashboard-bento">
-        <section className="workflow-card">
+        <section className="workflow-card liquid-card">
           <header><div><p className="eyebrow">COLLECTION FLOW</p><h2>收藏处理进度</h2></div><Link href={demo ? "/login" : "/insights"}>查看洞察 <ArrowRight size={14} /></Link></header>
           <div className="workflow-lanes">
             <Link href={demo ? "/login" : "/library?status=inbox"}><span data-status="inbox"><Bookmark size={17} /></span><div><strong>待整理</strong><small>刚收藏，等待归类</small></div><b>{statusCount("inbox")}</b></Link>
@@ -164,13 +182,13 @@ export function DashboardView({ demo = false }: { demo?: boolean }) {
           </div>
         </section>
 
-        <section className="rediscover-card">
+        <section className="rediscover-card liquid-card">
           <div className="rediscover-orb"><Sparkles size={18} /></div><p className="eyebrow">REDISCOVER</p><h2>从旧收藏里找回一条线索</h2>
           {spotlight ? <div className="spotlight-repo"><span className="repo-avatar">{spotlight.owner.slice(0, 2).toUpperCase()}</span><div><strong>{spotlight.fullName}</strong><p>{spotlight.note || spotlight.description}</p></div></div> : <p>同步 GitHub 后，这里会推荐值得再次查看的项目。</p>}
-          <Link href={demo ? "/login" : spotlight?.url ?? "/library"} target={!demo && spotlight ? "_blank" : undefined}>重新打开 <ArrowRight size={15} /></Link>
+          <Link href={demo ? "/login" : spotlight?.url ?? "/library"} target={!demo && spotlight ? "_blank" : undefined}>重新打开 <ArrowUpRight size={15} /></Link>
         </section>
 
-        <section className="dashboard-tags-card">
+        <section className="dashboard-tags-card liquid-card">
           <header><div><p className="eyebrow">YOUR TAXONOMY</p><h2>高频标签</h2></div><Tags size={18} /></header>
           <div>{(insights?.tags ?? []).slice(0, 7).map((tag) => <span className="tag-chip" data-color={tag.color} key={tag.name}>{tag.name}<small>{tag.count}</small></span>)}</div>
           <Link href={demo ? "/login" : "/tags"}>管理标签 <ArrowRight size={14} /></Link>

@@ -1,0 +1,767 @@
+/* Relaunch experience adaptations -----------------------------------------
+   Structural and visual foundations live in relaunch.css. This layer only
+   adapts those foundations to constrained viewports and user preferences. */
+
+/* The landing page is much taller than the visible particle composition.
+   Bounding the canvas avoids allocating and clearing a full-document bitmap. */
+.landing-particle-field {
+  inset-block-end: auto !important;
+  block-size: min(960px, 100%) !important;
+}
+
+.landing-particle-field,
+.auth-particle-field {
+  contain: strict;
+}
+
+/* Dark surfaces that need a context-specific counterpart to relaunch.css. */
+[data-theme="dark"] .landing-marquee {
+  border-color: var(--line);
+  background: rgb(20 20 26 / 48%);
+}
+
+[data-theme="dark"] :is(.floating-chip, .showcase-node, .showcase-core) {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--glass-strong) 90%, transparent);
+  box-shadow: var(--shadow-2), inset 0 1px rgb(255 255 255 / 8%);
+}
+
+[data-theme="dark"] .landing-cta {
+  background:
+    radial-gradient(circle at 88% 15%, rgb(51 104 126 / 28%), transparent 25rem),
+    radial-gradient(circle at 4% 100%, rgb(108 49 83 / 21%), transparent 23rem),
+    linear-gradient(145deg, rgb(35 34 43 / 92%), rgb(24 24 31 / 82%));
+}
+
+[data-theme="dark"] :is(.auth-card, .auth-story-points > span) {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--glass-strong) 92%, transparent);
+}
+
+[data-theme="dark"] .auth-divider {
+  color: var(--ink-3);
+}
+
+@media (max-width: 1180px) {
+  .landing-header,
+  .hero,
+  .landing-footer {
+    width: min(calc(100% - 40px), 1120px);
+  }
+
+  .hero {
+    grid-template-columns: minmax(0, .84fr) minmax(0, 1.16fr);
+    gap: clamp(34px, 4.5vw, 58px);
+  }
+
+  .hero h1 {
+    font-size: clamp(48px, 5.5vw, 68px);
+  }
+
+  .chip-note {
+    left: -24px;
+  }
+
+  .feature-section {
+    width: min(calc(100% - 40px), 1120px);
+    grid-template-columns: minmax(260px, .62fr) minmax(0, 1.38fr);
+    gap: clamp(42px, 5vw, 66px);
+  }
+
+  .workflow-showcase {
+    width: min(calc(100% - 40px), 1080px);
+    grid-template-columns: minmax(410px, 1.05fr) minmax(320px, .95fr);
+    gap: clamp(46px, 6vw, 76px);
+  }
+
+  .landing-cta {
+    width: min(calc(100% - 40px), 1120px);
+    padding-inline: clamp(38px, 5vw, 58px);
+  }
+
+  .auth-topbar,
+  .auth-layout {
+    width: min(calc(100% - 40px), 1080px);
+  }
+
+  .auth-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(370px, 430px);
+    gap: clamp(48px, 7vw, 88px);
+  }
+}
+
+@media (max-width: 900px) {
+  .landing-header {
+    width: calc(100% - 32px);
+  }
+
+  .landing-header nav {
+    display: none;
+  }
+
+  .hero {
+    width: min(calc(100% - 40px), 780px);
+    min-height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 72px;
+    padding: 82px 0 112px;
+  }
+
+  .hero-copy {
+    max-width: 720px;
+  }
+
+  .hero h1 {
+    max-width: 760px;
+    font-size: clamp(54px, 9vw, 72px);
+  }
+
+  .product-stage {
+    width: min(100%, 720px);
+    justify-self: center;
+  }
+
+  .product-preview,
+  .product-stage:hover .product-preview {
+    transform: none;
+  }
+
+  .chip-note {
+    left: -12px;
+  }
+
+  .landing-marquee > div {
+    width: min(calc(100% - 40px), 760px);
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(3, max-content);
+    justify-content: space-between;
+    gap: 22px 32px;
+    padding-block: 24px;
+  }
+
+  .feature-section {
+    width: min(calc(100% - 40px), 760px);
+    grid-template-columns: 1fr;
+    gap: 48px;
+    padding: 112px 0 100px;
+  }
+
+  .section-intro {
+    position: static;
+  }
+
+  .feature-intro {
+    max-width: 680px;
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-showcase {
+    width: min(calc(100% - 40px), 720px);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 62px;
+    padding: 76px 0 120px;
+  }
+
+  .workflow-showcase-visual {
+    width: min(100%, 620px);
+    justify-self: center;
+  }
+
+  .workflow-showcase-copy {
+    max-width: 660px;
+  }
+
+  .landing-cta {
+    width: min(calc(100% - 40px), 760px);
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 34px;
+    padding: 48px;
+  }
+
+  .landing-cta-actions {
+    width: 100%;
+  }
+
+  .auth-layout {
+    width: min(calc(100% - 40px), 680px);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 48px;
+    padding: 42px 0 64px;
+  }
+
+  .auth-story {
+    max-width: 640px;
+    text-align: center;
+  }
+
+  .auth-story .eyebrow {
+    justify-content: center;
+  }
+
+  .auth-story-points {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .auth-card {
+    width: min(100%, 480px);
+    justify-self: center;
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .landing-header {
+    width: calc(100% - 28px);
+    height: 62px;
+    margin-top: 12px;
+    padding-inline: 12px 10px;
+    border-radius: 18px;
+  }
+
+  .landing-header-actions .button {
+    padding-inline: 13px;
+  }
+
+  .hero {
+    width: calc(100% - 32px);
+    gap: 58px;
+    padding: 64px 0 88px;
+  }
+
+  .hero-copy {
+    text-align: center;
+  }
+
+  .release-pill {
+    margin-inline: auto;
+  }
+
+  .hero h1 {
+    margin-top: 24px;
+    font-size: clamp(45px, 11.5vw, 62px);
+    letter-spacing: -.045em;
+    line-height: 1.02;
+  }
+
+  .hero-copy > p {
+    max-width: 590px;
+    margin-inline: auto;
+    font-size: 15px;
+    line-height: 1.78;
+  }
+
+  .hero-actions {
+    justify-content: center;
+  }
+
+  .hero-proof {
+    justify-content: center;
+  }
+
+  .product-preview {
+    min-height: 510px;
+    border-radius: 22px;
+  }
+
+  .preview-shell {
+    min-height: 471px;
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .preview-sidebar {
+    padding-inline: 10px;
+  }
+
+  .preview-main {
+    padding-inline: 15px;
+  }
+
+  .preview-toolbar {
+    margin-inline: -15px;
+    padding-inline: 13px;
+  }
+
+  .preview-command {
+    width: min(180px, 65%);
+  }
+
+  .chip-note {
+    display: none;
+  }
+
+  .chip-sync {
+    top: -16px;
+    right: 14px;
+  }
+
+  .landing-marquee > div {
+    width: calc(100% - 32px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .landing-marquee span {
+    justify-content: center;
+  }
+
+  .feature-section,
+  .workflow-showcase,
+  .landing-cta {
+    width: calc(100% - 32px);
+  }
+
+  .feature-section {
+    gap: 38px;
+    padding: 94px 0 86px;
+  }
+
+  .feature-intro h2,
+  .workflow-showcase-copy h2,
+  .landing-cta h2 {
+    letter-spacing: -.035em;
+  }
+
+  .feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .feature-card {
+    min-height: 224px;
+  }
+
+  .workflow-showcase {
+    gap: 48px;
+    padding: 64px 0 98px;
+  }
+
+  .workflow-showcase-visual {
+    min-height: 480px;
+    border-radius: 30px;
+  }
+
+  .orbit-two {
+    width: 410px;
+    height: 410px;
+  }
+
+  .landing-cta {
+    margin-bottom: 42px;
+    padding: 38px 34px;
+    border-radius: 30px;
+  }
+
+  .landing-cta-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .landing-footer {
+    width: calc(100% - 32px);
+    min-height: 0;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 18px 28px;
+    padding: 30px 0 calc(30px + env(safe-area-inset-bottom));
+  }
+
+  .landing-footer p {
+    order: 3;
+    width: 100%;
+    margin: 0;
+  }
+
+  .auth-topbar {
+    width: calc(100% - 32px);
+    height: calc(68px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .auth-layout {
+    width: calc(100% - 32px);
+    padding-top: 30px;
+  }
+
+  .auth-story h1 {
+    font-size: clamp(38px, 9vw, 52px);
+    letter-spacing: -.035em;
+  }
+
+  .auth-story-points {
+    gap: 10px;
+  }
+
+  .auth-card {
+    padding: 30px 26px;
+    border-radius: 25px;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-header {
+    width: calc(100% - 20px);
+  }
+
+  .landing-header .brand-type small,
+  .landing-header-actions .button.ghost {
+    display: none;
+  }
+
+  .landing-header-actions .button.primary {
+    min-width: 0;
+  }
+
+  .hero {
+    width: calc(100% - 24px);
+    padding-top: 54px;
+  }
+
+  .release-pill {
+    max-width: 100%;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .hero h1 {
+    font-size: clamp(40px, 12.2vw, 53px);
+  }
+
+  .hero-copy > p {
+    font-size: 14.5px;
+  }
+
+  .hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hero-actions .button {
+    width: 100%;
+  }
+
+  .hero-proof {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 32px;
+  }
+
+  .hero-proof > span,
+  .hero-proof > span + span {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 3px;
+    padding-inline: 4px;
+  }
+
+  .hero-proof svg {
+    grid-row: auto;
+    margin-bottom: 2px;
+  }
+
+  .product-preview {
+    min-height: 466px;
+    border-radius: 19px;
+  }
+
+  .preview-shell {
+    min-height: 427px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview-sidebar,
+  .floating-chip,
+  .preview-pointer {
+    display: none;
+  }
+
+  .preview-main {
+    padding: 0 13px 14px;
+  }
+
+  .preview-toolbar {
+    margin-inline: -13px;
+    padding-inline: 12px;
+  }
+
+  .preview-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preview-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview-focus {
+    display: none;
+  }
+
+  .preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preview-grid article:nth-child(3) {
+    display: none;
+  }
+
+  .feature-section,
+  .workflow-showcase,
+  .landing-cta,
+  .landing-footer {
+    width: calc(100% - 24px);
+  }
+
+  .feature-intro h2,
+  .workflow-showcase-copy h2 {
+    font-size: clamp(34px, 10.5vw, 44px);
+  }
+
+  .feature-card {
+    min-height: 216px;
+    padding: 21px;
+    border-radius: 22px;
+  }
+
+  .workflow-showcase-visual {
+    min-height: 410px;
+    border-radius: 26px;
+  }
+
+  .orbit-one {
+    width: 238px;
+    height: 238px;
+  }
+
+  .orbit-two {
+    width: 338px;
+    height: 338px;
+  }
+
+  .showcase-core {
+    width: 124px;
+    height: 124px;
+    border-radius: 39px;
+  }
+
+  .showcase-node {
+    min-width: 0;
+    gap: 6px;
+    padding: 9px 10px;
+  }
+
+  .node-collection { top: 13%; left: 5%; }
+  .node-tags { top: 20%; right: 4%; }
+  .node-notes { bottom: 14%; left: 4%; }
+  .node-insights { right: 4%; bottom: 17%; }
+
+  .landing-cta {
+    padding: 32px 24px;
+    border-radius: 26px;
+  }
+
+  .landing-cta h2 {
+    font-size: clamp(31px, 9vw, 39px);
+  }
+
+  .landing-cta::after {
+    right: -170px;
+  }
+
+  .landing-footer {
+    gap: 16px;
+  }
+
+  .auth-layout {
+    min-height: calc(100dvh - 130px - env(safe-area-inset-top));
+    place-items: center;
+    padding: 22px 0 36px;
+  }
+
+  .auth-story {
+    display: none;
+  }
+
+  .auth-card {
+    width: 100%;
+    padding: 28px 21px;
+    border-radius: 22px;
+  }
+
+  .auth-card h2 {
+    font-size: 24px;
+  }
+
+  .auth-details {
+    gap: 12px;
+  }
+
+  .auth-consent {
+    line-height: 1.6;
+  }
+
+  .auth-footnote {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-particle-field,
+  .auth-particle-field {
+    opacity: .22;
+  }
+
+  :is(
+    .interactive-surface,
+    .product-preview,
+    .product-stage:hover .product-preview,
+    .button:hover,
+    .button:active,
+    .icon-button:hover
+  ) {
+    transform: none !important;
+  }
+
+  :is(.floating-chip, .showcase-orbit) {
+    animation: none !important;
+  }
+
+  :is(.interactive-surface__glow, .interactive-surface__sheen, .button-shine, .preview-pointer) {
+    display: none !important;
+  }
+
+  .feature-card:hover .feature-card-line i {
+    width: 28%;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .landing,
+  .auth-page {
+    --glass: var(--solid);
+    --glass-soft: var(--solid);
+    --glass-strong: var(--solid);
+    --blur-glass: none;
+    background: var(--canvas-1);
+  }
+
+  :is(.landing-particle-field, .auth-particle-field, .landing-mesh) {
+    display: none;
+  }
+
+  :is(
+    .landing-header,
+    .release-pill,
+    .product-preview,
+    .floating-chip,
+    .landing-marquee,
+    .liquid-card,
+    .showcase-core,
+    .showcase-node,
+    .auth-card,
+    .auth-story-points > span
+  ) {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: var(--solid);
+  }
+
+  .workflow-showcase-visual {
+    background: var(--canvas-2);
+  }
+
+  :is(.interactive-surface__glow, .interactive-surface__sheen) {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  :is(.landing, .auth-page) {
+    color: CanvasText;
+    background: Canvas;
+  }
+
+  :is(
+    .landing-particle-field,
+    .auth-particle-field,
+    .landing-mesh,
+    .stage-halo,
+    .showcase-orbit,
+    .button-shine,
+    .preview-pointer,
+    .interactive-surface__glow,
+    .interactive-surface__sheen,
+    .interactive-surface__rim
+  ) {
+    display: none !important;
+  }
+
+  .landing-cta::after {
+    display: none !important;
+  }
+
+  :is(
+    .landing-header,
+    .release-pill,
+    .product-preview,
+    .floating-chip,
+    .landing-marquee,
+    .liquid-card,
+    .showcase-core,
+    .showcase-node,
+    .auth-card,
+    .auth-story-points > span
+  ) {
+    color: CanvasText;
+    border: 1px solid CanvasText;
+    background: Canvas;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  :is(.hero h1 span, .auth-story h1 span) {
+    color: CanvasText;
+    background: none;
+    -webkit-text-fill-color: CanvasText;
+  }
+
+  :is(.button.primary, .github-button) {
+    color: ButtonText;
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    box-shadow: none;
+  }
+
+  :is(.interactive-surface, .product-preview, .product-stage:hover .product-preview) {
+    transform: none !important;
+  }
+}
+
+@media (pointer: coarse) {
+  :is(.landing, .auth-page) :is(a, button) {
+    touch-action: manipulation;
+  }
+
+  :is(.landing-header nav a, .auth-topbar > a, .landing-footer a) {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  :is(.button:hover, .icon-button:hover, .product-preview, .product-stage:hover .product-preview, .interactive-surface) {
+    transform: none !important;
+  }
+
+  .feature-card:hover .feature-card-line i {
+    width: 28%;
+  }
+
+  .interactive-surface__sheen {
+    display: none;
+  }
+}

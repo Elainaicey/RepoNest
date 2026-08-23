@@ -71,8 +71,9 @@ test("server-renders the public RepoNest product page", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>RepoNest/);
-  assert.match(html, /让每一颗 Star/);
-  assert.match(html, /自动同步 GitHub 星标/);
+  assert.match(html, /收藏不该只是/);
+  assert.match(html, /沉睡的星标/);
+  assert.match(html, /你的 GitHub 知识空间/);
   assert.match(html, /0\.1\.0/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
@@ -89,7 +90,7 @@ test("ships real routes for authentication, demo and the product", async () => {
   ]);
 
   assert.equal(login.status, 200);
-  assert.match(await login.text(), /连接 GitHub/);
+  assert.match(await login.text(), /连接你的 GitHub/);
   assert.equal(demo.status, 200);
   assert.match(await demo.text(), /演示空间/);
   assert.equal(tags.status, 200);

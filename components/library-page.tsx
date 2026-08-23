@@ -9,15 +9,22 @@ import {
 } from "@tanstack/react-query";
 import {
   Archive,
+  ArrowDown,
+  Bookmark,
   BookmarkPlus,
   Check,
   ChevronDown,
   CircleAlert,
+  CloudOff,
+  FolderOpen,
   Grid2X2,
   Heart,
   List,
   LoaderCircle,
+  PackageSearch,
+  RefreshCw,
   Search,
+  Sparkles,
   SlidersHorizontal,
   Tag as TagIcon,
   X
@@ -245,74 +252,213 @@ export function LibraryPage({ scope, collectionId, collectionName }: {
   const activeTag = tags.data?.tags.find((item) => item.id === tag);
   const filterChips = [
     search ? { key: "search", label: `关键词：${search}`, clear: () => setParams({ search: null }) } : null,
-    activeTag ? { key: "tag", label: `标签：${activeTag.name}`, clear: () => setParams({ tag: null }) } : null,
+    tag ? { key: "tag", label: `标签：${activeTag?.name ?? "已选择"}`, clear: () => setParams({ tag: null }) } : null,
     language ? { key: "language", label: `语言：${language}`, clear: () => setParams({ language: null }) } : null,
     status ? { key: "status", label: `状态：${status === "inbox" ? "待整理" : status === "exploring" ? "探索中" : "已采用"}`, clear: () => setParams({ status: null }) } : null
   ].filter(Boolean) as Array<{ key: string; label: string; clear: () => void }>;
+  const someSelected = selectedIds.size > 0 && !allSelected;
+  const isSearchSettling = search !== deferredSearch;
+  const hasMetadataError = collections.isError || tags.isError;
+  const loadedPercent = total > 0 ? Math.min((data.length / total) * 100, 100) : 0;
+  const emptyState = filterChips.length
+    ? {
+        icon: PackageSearch,
+        title: "没有找到匹配的项目",
+        description: "试试更短的关键词，或减少一个筛选条件。你的原始收藏不会受到影响。"
+      }
+    : scope === "archived"
+      ? {
+          icon: Archive,
+          title: "归档空间还是空的",
+          description: "把暂时不需要频繁查看的项目收进这里，资料和整理记录都会保留。"
+        }
+      : scope === "favorites"
+        ? {
+            icon: Heart,
+            title: "还没有特别关注",
+            description: "把真正影响当前工作或学习的项目加入关注，形成一份短而清晰的焦点清单。"
+          }
+        : scope === "bookmarks"
+          ? {
+              icon: Bookmark,
+              title: "稍后收藏还是空的",
+              description: "粘贴 GitHub 仓库地址，先收下线索，再决定是否深入探索或正式采用。"
+            }
+          : {
+              icon: Sparkles,
+              title: "建立你的第一份项目资料库",
+              description: "从 GitHub 同步已有 Star，或手动收藏一个值得留下的仓库。"
+            };
+  const EmptyStateIcon = emptyState.icon;
 
   return (
-    <div className="page-stack library-page">
+    <div className="page-stack library-page library-workspace">
       <PageHeader
         {...pageCopy}
-        actions={<button className="button primary" onClick={() => setBookmarkOpen(true)}><BookmarkPlus size={18} /> 添加仓库</button>}
+        actions={(
+          <button className="button primary library-add-button" onClick={() => setBookmarkOpen(true)} type="button">
+            <BookmarkPlus size={18} aria-hidden="true" /> 添加仓库
+          </button>
+        )}
       />
 
-      <section className="library-commandbar" aria-label="资料库工具栏">
-        <label className="search-field">
-          <Search size={19} />
-          <input ref={searchInput} value={search} onChange={(event) => setParams({ search: event.target.value || null })} placeholder="搜索项目、笔记或标签…" />
-          {search && <button onClick={() => setParams({ search: null })} aria-label="清空搜索"><X size={16} /></button>}
-          <kbd>/</kbd>
+      <section className="library-command-center" aria-labelledby="library-command-title">
+        <header className="library-command-heading">
+          <div>
+            <span className="library-command-kicker"><Sparkles size={13} aria-hidden="true" /> 探索与整理</span>
+            <h2 id="library-command-title">找到下一项值得投入的项目</h2>
+            <p>搜索会同时匹配仓库信息、标签与私人笔记。</p>
+          </div>
+          <div className="library-result-overview" aria-live="polite">
+            <strong>{repositories.isPending ? "—" : total.toLocaleString()}</strong>
+            <span>{filterChips.length ? "个匹配项目" : "个项目在当前空间"}</span>
+          </div>
+        </header>
+
+        <div className="library-commandbar" role="search" aria-label="搜索与筛选资料库">
+        <label className="search-field library-search-field">
+          <Search size={19} aria-hidden="true" />
+          <span className="sr-only">搜索资料库</span>
+          <input
+            ref={searchInput}
+            type="search"
+            value={search}
+            onChange={(event) => setParams({ search: event.target.value || null })}
+            placeholder="搜索项目、描述、笔记或标签…"
+            aria-controls="repository-results"
+            aria-keyshortcuts="/"
+          />
+          {isSearchSettling && <LoaderCircle className="spinning search-pending-icon" size={15} aria-label="正在搜索" />}
+          {search && <button onClick={() => setParams({ search: null })} aria-label="清空搜索" type="button"><X size={16} /></button>}
+          <kbd aria-hidden="true">/</kbd>
         </label>
         <Popover.Root>
           <Popover.Trigger asChild>
-            <button className={activeFilterCount ? "button filter-button active" : "button filter-button"}>
-              <SlidersHorizontal size={17} /> 筛选
+            <button className={activeFilterCount ? "button filter-button active" : "button filter-button"} type="button" aria-label={activeFilterCount ? `筛选，已启用 ${activeFilterCount} 项` : "筛选资料库"}>
+              <SlidersHorizontal size={17} aria-hidden="true" /> 筛选
               {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
-              <ChevronDown size={15} />
+              <ChevronDown size={15} aria-hidden="true" />
             </button>
           </Popover.Trigger>
           <Popover.Portal>
-            <Popover.Content className="filter-popover" align="end" sideOffset={10}>
-              <div className="popover-heading"><strong>缩小范围</strong><span>组合条件精准定位收藏</span></div>
-              <label><span>标签</span><select value={tag} onChange={(event) => setParams({ tag: event.target.value || null })}><option value="">全部标签</option>{tags.data?.tags.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.count}</option>)}</select></label>
-              <label><span>编程语言</span><select value={language} onChange={(event) => setParams({ language: event.target.value || null })}><option value="">全部语言</option>{languages.map((item) => <option value={item.name} key={item.name}>{item.name} · {item.count}</option>)}</select></label>
-              <label><span>处理状态</span><select value={status} onChange={(event) => setParams({ status: event.target.value || null })}><option value="">全部状态</option><option value="inbox">待整理</option><option value="exploring">探索中</option><option value="adopted">已采用</option></select></label>
-              <button className="button ghost full" onClick={clearFilters}>重置筛选</button>
+            <Popover.Content className="filter-popover library-filter-popover" align="end" sideOffset={10}>
+              <div className="popover-heading">
+                <span className="popover-heading-icon"><SlidersHorizontal size={16} aria-hidden="true" /></span>
+                <span><strong>精确筛选</strong><small>组合条件，缩小探索范围</small></span>
+              </div>
+              {hasMetadataError && (
+                <div className="filter-data-warning" role="status">
+                  <CircleAlert size={15} aria-hidden="true" />
+                  <span>部分分类信息读取失败</span>
+                  <button type="button" onClick={() => { collections.refetch(); tags.refetch(); }}>重试</button>
+                </div>
+              )}
+              <label>
+                <span>标签</span>
+                <select value={tag} onChange={(event) => setParams({ tag: event.target.value || null })} disabled={tags.isPending}>
+                  <option value="">{tags.isPending ? "正在读取标签…" : "全部标签"}</option>
+                  {tags.data?.tags.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.count ?? 0}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>编程语言</span>
+                <select value={language} onChange={(event) => setParams({ language: event.target.value || null })}>
+                  <option value="">全部语言</option>
+                  {languages.map((item) => <option value={item.name} key={item.name}>{item.name} · {item.count}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>推进状态</span>
+                <select value={status} onChange={(event) => setParams({ status: event.target.value || null })}>
+                  <option value="">全部状态</option><option value="inbox">待整理</option><option value="exploring">探索中</option><option value="adopted">已采用</option>
+                </select>
+              </label>
+              <div className="filter-popover-actions">
+                <button className="button ghost" onClick={clearFilters} type="button" disabled={activeFilterCount === 0}>重置</button>
+                <Popover.Close asChild><button className="button secondary" type="button">完成</button></Popover.Close>
+              </div>
               <Popover.Arrow className="popover-arrow" />
             </Popover.Content>
           </Popover.Portal>
         </Popover.Root>
-        <label className="sort-control">
-          <span>排序</span>
+        <label className="sort-control library-sort-control">
+          <span>排序方式</span>
           <select value={sort} onChange={(event) => setParams({ sort: event.target.value })}>
             <option value="saved">最近收藏</option><option value="updated">最近活跃</option><option value="stars">最多 Star</option><option value="rating">个人评分</option><option value="name">项目名称</option>
           </select>
         </label>
-        <div className="view-switcher" role="group" aria-label="视图">
-          <button className={view === "grid" ? "active" : ""} onClick={() => setParams({ view: "grid" })} aria-label="卡片视图" aria-pressed={view === "grid"}><Grid2X2 size={17} /></button>
-          <button className={view === "list" ? "active" : ""} onClick={() => setParams({ view: "list" })} aria-label="列表视图" aria-pressed={view === "list"}><List size={18} /></button>
+        <div className="view-switcher library-view-switcher" role="group" aria-label="结果布局">
+          <button className={view === "grid" ? "active" : ""} onClick={() => setParams({ view: "grid" })} aria-label="切换到卡片视图" aria-pressed={view === "grid"} type="button" title="卡片视图"><Grid2X2 size={17} aria-hidden="true" /></button>
+          <button className={view === "list" ? "active" : ""} onClick={() => setParams({ view: "list" })} aria-label="切换到列表视图" aria-pressed={view === "list"} type="button" title="列表视图"><List size={18} aria-hidden="true" /></button>
         </div>
+        </div>
+
+        {filterChips.length > 0 && (
+          <div className="active-filter-chips library-filter-trail" aria-label="当前筛选条件">
+            <span>正在查看</span>
+            {filterChips.map((chip) => (
+              <button className="active-filter-chip" key={chip.key} onClick={chip.clear} type="button" aria-label={`移除筛选：${chip.label}`}>
+                {chip.label}<X size={14} aria-hidden="true" />
+              </button>
+            ))}
+            <button className="clear-filter-chip" onClick={clearFilters} type="button">清除全部</button>
+          </div>
+        )}
       </section>
 
-      {filterChips.length > 0 && <div className="active-filter-chips" aria-label="当前筛选条件">{filterChips.map((chip) => <button className="active-filter-chip" key={chip.key} onClick={chip.clear}>{chip.label}<X size={14} /></button>)}<button className="clear-filter-chip" onClick={clearFilters}>清除全部</button></div>}
-
-      <div className="library-summary">
-        <button className="select-all" onClick={() => setSelectedIds(allSelected ? new Set() : new Set(data.map((item) => item.id)))} role="checkbox" aria-checked={allSelected}>
-          <span data-selected={allSelected} /> {allSelected ? "取消全选" : "选择当前页"}
+      <div className="library-summary library-result-toolbar">
+        <button
+          className="select-all library-select-all"
+          onClick={() => setSelectedIds(allSelected ? new Set() : new Set(data.map((item) => item.id)))}
+          role="checkbox"
+          aria-checked={someSelected ? "mixed" : allSelected}
+          aria-label={allSelected ? `取消选择已加载的 ${data.length} 个项目` : `选择已加载的 ${data.length} 个项目`}
+          type="button"
+          disabled={data.length === 0}
+        >
+          <span className="selection-box" data-selected={allSelected || someSelected} data-indeterminate={someSelected} aria-hidden="true">
+            {allSelected && <Check size={12} />}
+            {someSelected && <span />}
+          </span>
+          {allSelected ? "取消全选" : someSelected ? `已选择 ${selectedIds.size} 项` : "选择已加载项目"}
         </button>
-        <span aria-live="polite">{repositories.isFetching && !repositories.isFetchingNextPage ? "正在更新…" : total === data.length ? `${total} 个项目` : `已显示 ${data.length} / ${total} 个项目`}</span>
+        <div className="library-result-status" aria-live="polite" aria-atomic="true">
+          {repositories.isFetching && !repositories.isFetchingNextPage ? (
+            <><LoaderCircle className="spinning" size={14} aria-hidden="true" /> 正在刷新结果</>
+          ) : total === data.length ? (
+            `共 ${total.toLocaleString()} 个项目`
+          ) : (
+            `已显示 ${data.length.toLocaleString()} / ${total.toLocaleString()} 个项目`
+          )}
+        </div>
       </div>
 
       {repositories.isPending ? (
-        <div className={view === "grid" ? "repo-grid" : "repo-list"} aria-label="正在加载">
-          {[0, 1, 2, 3, 4, 5].map((item) => <div className="repo-card skeleton-card" key={item} />)}
-        </div>
-      ) : repositories.isError ? (
-        <div className="query-error-state" role="alert"><CircleAlert className="query-error-icon" size={24} /><h2>暂时无法读取资料库</h2><p>你的收藏没有丢失。请检查网络或服务状态后重新加载。</p><button className="button secondary" onClick={() => repositories.refetch()}>重新加载</button></div>
-      ) : data.length ? (
-        <>
+        <section className="library-results library-results-loading" id="repository-results" aria-busy="true" aria-label="正在加载资料库">
           <div className={view === "grid" ? "repo-grid" : "repo-list"}>
+            {[0, 1, 2, 3, 4, 5].map((item) => (
+              <div className="repo-card skeleton-card repo-card-skeleton" key={item} aria-hidden="true">
+                <span className="skeleton-avatar" /><span className="skeleton-title" /><span className="skeleton-copy" /><span className="skeleton-copy short" /><span className="skeleton-footer" />
+              </div>
+            ))}
+          </div>
+          <span className="sr-only" role="status">正在读取你的项目资料库，请稍候。</span>
+        </section>
+      ) : repositories.isError ? (
+        <section className="query-error-state library-state-panel" id="repository-results" role="alert">
+          <span className="state-visual error" aria-hidden="true"><CloudOff size={26} /></span>
+          <span className="state-eyebrow">连接中断</span>
+          <h2>暂时无法读取资料库</h2>
+          <p>你的收藏与整理记录仍然安全。请检查网络或服务状态，然后重新加载。</p>
+          <div className="state-actions">
+            <button className="button primary" onClick={() => repositories.refetch()} type="button"><RefreshCw size={16} aria-hidden="true" />重新加载</button>
+            <button className="button ghost" onClick={() => router.push("/dashboard")} type="button">返回概览</button>
+          </div>
+        </section>
+      ) : data.length ? (
+        <section className="library-results" id="repository-results" aria-labelledby="library-results-title" aria-busy={repositories.isFetching || isSearchSettling} data-updating={repositories.isFetching || isSearchSettling}>
+          <h2 className="sr-only" id="library-results-title">项目结果</h2>
+          <div className={view === "grid" ? "repo-grid" : "repo-list"} data-layout={view}>
             {data.map((repository) => (
               <RepositoryCard
                 repository={repository}
@@ -329,48 +475,155 @@ export function LibraryPage({ scope, collectionId, collectionName }: {
               />
             ))}
           </div>
-          {repositories.hasNextPage && <div className="load-more-row"><button className="button secondary" onClick={() => repositories.fetchNextPage()} disabled={repositories.isFetchingNextPage}>{repositories.isFetchingNextPage ? <><LoaderCircle className="spinning" size={17} />正在加载…</> : `继续加载（剩余 ${Math.max(total - data.length, 0)} 项）`}</button></div>}
-        </>
+          {repositories.hasNextPage && (
+            <div className="load-more-row library-pagination">
+              <div className="load-more-progress" aria-hidden="true"><span style={{ width: `${loadedPercent}%` }} /></div>
+              <p>已浏览 {data.length.toLocaleString()} 项，还有 {Math.max(total - data.length, 0).toLocaleString()} 项等待探索</p>
+              <button className="button secondary" onClick={() => repositories.fetchNextPage()} disabled={repositories.isFetchingNextPage} type="button">
+                {repositories.isFetchingNextPage ? <><LoaderCircle className="spinning" size={17} aria-hidden="true" />正在加载…</> : <><ArrowDown size={17} aria-hidden="true" />继续加载</>}
+              </button>
+            </div>
+          )}
+        </section>
       ) : (
-        <div className="empty-state">
-          <span className="empty-icon"><Search size={23} /></span>
-          <h2>{filterChips.length ? "没有符合条件的项目" : scope === "archived" ? "还没有归档项目" : scope === "favorites" ? "还没有特别关注" : "这里还很安静"}</h2>
-          <p>{filterChips.length ? "调整筛选条件，或者换一个更短的关键词。" : scope === "archived" ? "不再需要频繁查看的项目可以归档到这里。" : "从 GitHub 同步，或手动添加一个值得留下的仓库。"}</p>
-          <div className="empty-actions">{filterChips.length ? <button className="button secondary" onClick={clearFilters}>重置搜索与筛选</button> : <><button className="button primary" onClick={() => setBookmarkOpen(true)}><BookmarkPlus size={17} />添加仓库</button><button className="button secondary" onClick={() => router.push("/dashboard")}>前往同步中心</button></>}</div>
-        </div>
+        <section className="empty-state library-state-panel" id="repository-results">
+          <span className="state-visual empty" aria-hidden="true"><EmptyStateIcon size={26} /></span>
+          <span className="state-eyebrow">{filterChips.length ? "换个探索角度" : "从这里开始"}</span>
+          <h2>{emptyState.title}</h2>
+          <p>{emptyState.description}</p>
+          <div className="empty-actions state-actions">
+            {filterChips.length ? (
+              <button className="button secondary" onClick={clearFilters} type="button"><SlidersHorizontal size={16} aria-hidden="true" />重置搜索与筛选</button>
+            ) : (
+              <>
+                <button className="button primary" onClick={() => setBookmarkOpen(true)} type="button"><BookmarkPlus size={17} aria-hidden="true" />添加仓库</button>
+                <button className="button secondary" onClick={() => router.push("/dashboard")} type="button">前往同步中心</button>
+              </>
+            )}
+          </div>
+        </section>
       )}
 
       {selectedIds.size > 0 && (
-        <div className="bulk-bar" role="toolbar" aria-label="批量操作" aria-busy={bulkUpdate.isPending}>
-          <div><span>{selectedIds.size}</span><strong>已选择</strong></div>
-          <span className="bulk-divider" />
-          <label><BookmarkPlus size={16} /><select disabled={bulkUpdate.isPending} defaultValue="" onChange={(event) => { if (event.target.value) bulkUpdate.mutate({ collectionId: event.target.value === "none" ? null : event.target.value }); event.target.value = ""; }}><option value="" disabled>移动到分组</option><option value="none">未分组</option>{collections.data?.collections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label><Check size={16} /><select disabled={bulkUpdate.isPending} defaultValue="" onChange={(event) => { if (event.target.value) bulkUpdate.mutate({ readStatus: event.target.value as ReadStatus }); event.target.value = ""; }}><option value="" disabled>设置状态</option><option value="inbox">待整理</option><option value="exploring">探索中</option><option value="adopted">已采用</option></select></label>
-          <label><TagIcon size={16} /><select disabled={bulkUpdate.isPending} defaultValue="" onChange={(event) => { if (event.target.value) bulkUpdate.mutate(event.target.value === "clear" ? { tagIds: [] } : { addTagIds: [event.target.value] }); event.target.value = ""; }}><option value="" disabled>添加标签</option><option value="clear">清空全部标签</option>{tags.data?.tags.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <button disabled={bulkUpdate.isPending} onClick={() => bulkUpdate.mutate({ favorite: true })}><Heart size={16} /> 关注</button>
-          <button disabled={bulkUpdate.isPending} onClick={() => bulkUpdate.mutate({ archived: true })}><Archive size={16} /> 归档</button>
-          <button className="bulk-close" onClick={() => setSelectedIds(new Set())} aria-label="取消选择"><X size={17} /></button>
-        </div>
+        <aside className="bulk-bar library-bulk-dock" role="toolbar" aria-label={`对已选择的 ${selectedIds.size} 个项目执行批量操作`} aria-busy={bulkUpdate.isPending}>
+          <div className="bulk-selection-summary">
+            <span>{selectedIds.size}</span>
+            <strong>个项目</strong>
+            <small>批量整理</small>
+          </div>
+          <span className="bulk-divider" aria-hidden="true" />
+          <div className="bulk-action-group">
+            <label>
+              <FolderOpen size={16} aria-hidden="true" />
+              <span className="sr-only">移动到收藏集</span>
+              <select
+                aria-label="将已选项目移动到收藏集"
+                disabled={bulkUpdate.isPending || collections.isPending}
+                defaultValue=""
+                onChange={(event) => {
+                  if (event.target.value) bulkUpdate.mutate({ collectionId: event.target.value === "none" ? null : event.target.value });
+                  event.target.value = "";
+                }}
+              >
+                <option value="" disabled>{collections.isPending ? "读取收藏集…" : "移动到收藏集"}</option>
+                <option value="none">未分组</option>
+                {collections.data?.collections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
+            <label>
+              <Check size={16} aria-hidden="true" />
+              <span className="sr-only">设置推进状态</span>
+              <select
+                aria-label="设置已选项目的推进状态"
+                disabled={bulkUpdate.isPending}
+                defaultValue=""
+                onChange={(event) => {
+                  if (event.target.value) bulkUpdate.mutate({ readStatus: event.target.value as ReadStatus });
+                  event.target.value = "";
+                }}
+              >
+                <option value="" disabled>设置状态</option><option value="inbox">待整理</option><option value="exploring">探索中</option><option value="adopted">已采用</option>
+              </select>
+            </label>
+            <label>
+              <TagIcon size={16} aria-hidden="true" />
+              <span className="sr-only">添加或清空标签</span>
+              <select
+                aria-label="为已选项目添加或清空标签"
+                disabled={bulkUpdate.isPending || tags.isPending}
+                defaultValue=""
+                onChange={(event) => {
+                  if (event.target.value) bulkUpdate.mutate(event.target.value === "clear" ? { tagIds: [] } : { addTagIds: [event.target.value] });
+                  event.target.value = "";
+                }}
+              >
+                <option value="" disabled>{tags.isPending ? "读取标签…" : "添加标签"}</option>
+                <option value="clear">清空全部标签</option>
+                {tags.data?.tags.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <span className="bulk-divider" aria-hidden="true" />
+          <div className="bulk-quick-actions">
+            <button disabled={bulkUpdate.isPending} onClick={() => bulkUpdate.mutate({ favorite: true })} type="button"><Heart size={16} aria-hidden="true" /> 关注</button>
+            <button disabled={bulkUpdate.isPending} onClick={() => bulkUpdate.mutate({ archived: true })} type="button"><Archive size={16} aria-hidden="true" /> 归档</button>
+          </div>
+          {bulkUpdate.isPending && <LoaderCircle className="spinning bulk-pending-icon" size={17} aria-label="正在更新所选项目" />}
+          <button className="bulk-close" onClick={() => setSelectedIds(new Set())} aria-label="取消全部选择" type="button" disabled={bulkUpdate.isPending}><X size={17} aria-hidden="true" /></button>
+        </aside>
       )}
 
       <Dialog.Root open={bookmarkOpen} onOpenChange={setBookmarkOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="dialog-overlay" />
-          <Dialog.Content className="dialog-card compact-dialog">
-            <div className="dialog-icon"><BookmarkPlus size={21} /></div>
+          <Dialog.Overlay className="dialog-overlay bookmark-dialog-overlay" />
+          <Dialog.Content className="dialog-card compact-dialog bookmark-dialog" aria-describedby="bookmark-dialog-description">
+            <div className="dialog-icon bookmark-dialog-icon"><BookmarkPlus size={21} aria-hidden="true" /></div>
+            <span className="dialog-eyebrow">快速收藏</span>
             <Dialog.Title>添加 GitHub 仓库</Dialog.Title>
-            <Dialog.Description>无需先 Star，粘贴项目地址即可把它收进 RepoNest。</Dialog.Description>
-            <form onSubmit={(event) => { event.preventDefault(); addBookmark.mutate(); }}>
-              <label className="field-label"><span>仓库地址</span><input autoFocus value={bookmark} onChange={(event) => setBookmark(event.target.value)} placeholder="github.com/owner/repository" required /></label>
-              {addBookmark.isError && <p className="form-error" role="alert">无法读取这个仓库，请确认地址和 GitHub 授权后重试。</p>}
-              <div className="dialog-actions"><Dialog.Close asChild><button className="button ghost" type="button">取消</button></Dialog.Close><button className="button primary" disabled={addBookmark.isPending}>{addBookmark.isPending ? "读取中…" : "添加到资料库"}</button></div>
+            <Dialog.Description id="bookmark-dialog-description">无需先 Star。RepoNest 会读取公开项目资料，并把它加入当前资料库。</Dialog.Description>
+            <form className="bookmark-dialog-form" onSubmit={(event) => { event.preventDefault(); addBookmark.mutate(); }}>
+              <label className="field-label">
+                <span>仓库地址或 owner/name</span>
+                <div className="repository-url-field">
+                  <span aria-hidden="true">github.com/</span>
+                  <input
+                    autoFocus
+                    value={bookmark}
+                    onChange={(event) => { setBookmark(event.target.value); if (addBookmark.isError) addBookmark.reset(); }}
+                    placeholder="owner/repository"
+                    required
+                    spellCheck="false"
+                    autoComplete="off"
+                    aria-invalid={addBookmark.isError}
+                    aria-describedby={addBookmark.isError ? "bookmark-error" : "bookmark-help"}
+                  />
+                </div>
+                <small id="bookmark-help">支持完整 GitHub URL，私有仓库需要当前授权可访问。</small>
+              </label>
+              {addBookmark.isError && <p className="form-error" id="bookmark-error" role="alert"><CircleAlert size={15} aria-hidden="true" />无法读取这个仓库，请确认地址和 GitHub 授权后重试。</p>}
+              <div className="dialog-actions">
+                <Dialog.Close asChild><button className="button ghost" type="button" disabled={addBookmark.isPending}>取消</button></Dialog.Close>
+                <button className="button primary" disabled={addBookmark.isPending || !bookmark.trim()}>
+                  {addBookmark.isPending ? <><LoaderCircle className="spinning" size={16} aria-hidden="true" />正在读取…</> : <><BookmarkPlus size={16} aria-hidden="true" />添加到资料库</>}
+                </button>
+              </div>
             </form>
-            <Dialog.Close asChild><button className="dialog-close icon-button" aria-label="关闭"><X size={18} /></button></Dialog.Close>
+            <Dialog.Close asChild><button className="dialog-close icon-button" aria-label="关闭添加仓库对话框" type="button" disabled={addBookmark.isPending}><X size={18} aria-hidden="true" /></button></Dialog.Close>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
 
-      {repositoryId && deepRepository.isPending && !activeRepository && <div className="drawer-loading" role="status"><LoaderCircle className="spinning" size={20} />正在读取项目详情…</div>}
+      {repositoryId && deepRepository.isPending && !activeRepository && (
+        <div className="drawer-loading drawer-load-toast" role="status"><LoaderCircle className="spinning" size={20} aria-hidden="true" /><span><strong>正在打开项目</strong><small>读取整理信息与 GitHub 数据…</small></span></div>
+      )}
+      {repositoryId && !activeRepository && (deepRepository.isError || deepRepository.isSuccess) && (
+        <div className="drawer-loading drawer-load-toast error" role="alert">
+          <CircleAlert size={19} aria-hidden="true" />
+          <span><strong>{deepRepository.isError ? "无法打开项目详情" : "这个项目已不在资料库中"}</strong><small>{deepRepository.isError ? "请检查连接后重试。" : "链接可能已经失效。"}</small></span>
+          {deepRepository.isError && <button type="button" onClick={() => deepRepository.refetch()} aria-label="重新读取项目详情"><RefreshCw size={15} aria-hidden="true" /></button>}
+          <button type="button" onClick={() => setParams({ repository: null })} aria-label="关闭提示"><X size={15} aria-hidden="true" /></button>
+        </div>
+      )}
       {activeRepository && (
         <RepositoryDrawer
           key={activeRepository.id}

@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Manrope } from "next/font/google";
 import Providers from "./providers";
 import "./globals.css";
 import "./v2.css";
+import "./relaunch.css";
+import "./library-experience.css";
+import "./content-views.css";
+import "./experience-responsive.css";
 
 const themeBootstrap = `(()=>{try{const stored=localStorage.getItem("reponest.theme");const theme=stored||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme}catch{}})()`;
 
@@ -14,6 +18,12 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"]
+});
+
+const manrope = Manrope({
+  variable: "--font-manrope",
+  subsets: ["latin"],
+  display: "swap"
 });
 
 export const metadata: Metadata = {
@@ -53,7 +63,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
+  ArrowUpRight,
   BarChart3,
   Bookmark,
   Boxes,
@@ -14,9 +15,11 @@ import {
   Library,
   Menu,
   Moon,
+  Plus,
   RefreshCw,
   Search,
   Settings,
+  ShieldCheck,
   Sparkles,
   Sun,
   Tags,
@@ -34,6 +37,7 @@ import { demoCollections, demoRepositories, demoUser } from "@/lib/demo-data";
 import { relativeTime } from "@/lib/format";
 import type { Collection, Repository, User } from "@/lib/types";
 import { Brand } from "./brand";
+import { ParticleField } from "./particle-field";
 
 const navigation = [
   { href: "/dashboard", label: "概览", icon: LayoutDashboard },
@@ -179,41 +183,48 @@ function Shell({ user, collections, children, demo = false }: {
   const syncLabel = syncing ? "正在同步" : syncHasError ? "同步异常" : user.lastSyncedAt ? `已同步${relativeTime(user.lastSyncedAt)}` : "等待首次同步";
 
   const shellLinks = [...navigation, ...intelligenceNavigation];
+  const currentPage = [...shellLinks, { href: "/settings", label: "空间与偏好" }, ...collections.map((collection) => ({ href: `/collections/${collection.id}`, label: collection.name }))]
+    .find((item) => isActive(item.href))?.label ?? "RepoNest";
 
   return (
     <div className="app-frame">
+      <ParticleField className="app-particle-field" density={36_000} maxParticles={38} connectionDistance={118} interactionRadius={145} />
       <a className="skip-link" href="#workspace-content">跳到主要内容</a>
       <aside className="sidebar">
+        <div className="sidebar-ambient" aria-hidden="true" />
         <div className="sidebar-head"><Brand /><span className="version-badge">0.1</span></div>
         <nav className="primary-nav" aria-label="主导航">
           <p className="nav-caption">工作空间</p>
           {navigation.map(({ href, label, icon: Icon }) => (
-            <Link className={itemClass(href)} href={demo ? (href === "/dashboard" ? "/demo" : "/login") : href} key={href} aria-current={isActive(href) && !demo ? "page" : undefined}><Icon size={18} /><span>{label}</span></Link>
+            <Link className={itemClass(href)} href={demo ? (href === "/dashboard" ? "/demo" : "/login") : href} key={href} aria-current={isActive(href) && !demo ? "page" : undefined}><span className="nav-icon"><Icon size={17} /></span><span>{label}</span></Link>
           ))}
           <p className="nav-caption collection-caption">组织与洞察</p>
           {intelligenceNavigation.map(({ href, label, icon: Icon }) => (
-            <Link className={itemClass(href)} href={demo ? "/login" : href} key={href} aria-current={isActive(href) && !demo ? "page" : undefined}><Icon size={18} /><span>{label}</span></Link>
+            <Link className={itemClass(href)} href={demo ? "/login" : href} key={href} aria-current={isActive(href) && !demo ? "page" : undefined}><span className="nav-icon"><Icon size={17} /></span><span>{label}</span></Link>
           ))}
-          <div className="nav-caption-row"><p className="nav-caption collection-caption">收藏集</p><Link href={demo ? "/login" : "/settings#collections"} aria-label="管理收藏集">+</Link></div>
+          <div className="nav-caption-row"><p className="nav-caption collection-caption">收藏集</p><Link href={demo ? "/login" : "/settings#collections"} aria-label="管理收藏集"><Plus size={14} /></Link></div>
           {collections.slice(0, 7).map((collection) => (
             <Link className={itemClass(`/collections/${collection.id}`)} href={demo ? "/login" : `/collections/${collection.id}`} key={collection.id} aria-current={!demo && pathname === `/collections/${collection.id}` ? "page" : undefined}>
               <span className="collection-dot" data-color={collection.color} aria-hidden="true" /><span>{collection.name}</span><small>{collection.count}</small>
             </Link>
           ))}
-          {collections.length > 7 && <Link className="nav-item nav-view-all" href={demo ? "/login" : "/settings#collections"}><Boxes size={18} /><span>查看全部收藏集</span></Link>}
+          {collections.length > 7 && <Link className="nav-item nav-view-all" href={demo ? "/login" : "/settings#collections"}><span className="nav-icon"><Boxes size={17} /></span><span>查看全部收藏集</span></Link>}
         </nav>
         <div className="sidebar-foot">
           {demo && <div className="demo-chip"><Sparkles size={15} />演示空间</div>}
+          {!demo && <Link className="sidebar-private-card" href="/settings#data"><span><ShieldCheck size={16} /></span><div><strong>私人空间</strong><small>本地持久化 · 可导出</small></div><ArrowUpRight size={14} /></Link>}
           <Link className="user-card" href={demo ? "/login" : "/settings"}>
-            <Image src={user.avatarUrl} alt="" width={34} height={34} unoptimized />
-            <span><strong>{user.name || user.login}</strong><small>@{user.login}</small></span><Settings size={17} />
+            <span className="user-avatar"><Image src={user.avatarUrl} alt="" width={36} height={36} unoptimized /><i /></span>
+            <span><strong>{user.name || user.login}</strong><small>@{user.login}</small></span><Settings size={16} />
           </Link>
         </div>
       </aside>
 
       <div className="workspace">
+        <div className="workspace-atmosphere" aria-hidden="true"><i /><i /><i /></div>
         <header className="workspace-topbar">
-          <button className="global-search-trigger" onClick={() => setCommandOpen(true)}><Search size={17} /><span>搜索仓库、页面或收藏集…</span><kbd>{shortcut}</kbd></button>
+          <div className="topbar-context"><span>我的空间</span><i>/</i><strong>{currentPage}</strong></div>
+          <button className="global-search-trigger" onClick={() => setCommandOpen(true)}><Search size={16} /><span>搜索仓库、页面或收藏集…</span><kbd>⌘ K</kbd></button>
           <div className="topbar-actions">
             {demo ? <span className="sync-indicator"><i />只读演示</span> : (
               <Popover.Root>
